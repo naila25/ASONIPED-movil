@@ -246,14 +246,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     borderRadius: BorderRadius.circular(16),
                     child: _cameraAvailable
                         ? MobileScanner(
-                            controller: _scannerController,
-                            onDetect: (barcode, arguments) {
+                          controller: _scannerController,
+                          onDetect: (capture) {
+                            for (final barcode in capture.barcodes) {
                               final rawValue = barcode.rawValue;
                               if (rawValue != null && !_scanned) {
                                 _processQrData(rawValue);
+                                break;
                               }
-                            },
-                          )
+                            }
+                          },
+                        )
                         : const Center(
                             child: Padding(
                               padding: EdgeInsets.all(24),
