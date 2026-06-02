@@ -36,10 +36,117 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
         _error = e.toString();
       });
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _showCreateActivityDialog() async {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    DateTime? pickedDate;
+    TimeOfDay? pickedTime;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Crear actividad'),
+          content: StatefulBuilder(builder: (context, setState) {
+            return Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Nombre'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    TextFormField(
+                      controller: descCtrl,
+                      decoration: const InputDecoration(labelText: 'Descripción (opcional)'),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(pickedDate?.toIso8601String().split('T').first ?? 'Fecha (requerido)'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final d = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2000),
+                              lastDate: DateTime(2100),
+                            );
+                            if (d != null) setState(() => pickedDate = d);
+                          },
+                          child: const Text('Seleccionar'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(pickedTime?.format(context) ?? 'Hora (opcional)'),
+                        ),
+                        TextButton(
+                          onPressed: () async {
+                            final t = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay.now(),
+                            );
+                            if (t != null) setState(() => pickedTime = t);
+                          },
+                          child: const Text('Seleccionar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
+                if (pickedDate == null) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event date is required')));
+                  return;
+                }
+
+                final eventDate = pickedDate!.toIso8601String().split('T').first;
+                final eventTime = pickedTime == null ? null : '${pickedTime!.hour.toString().padLeft(2,'0')}:${pickedTime!.minute.toString().padLeft(2,'0')}';
+
+                try {
+                  final messenger = ScaffoldMessenger.of(context);
+                  Navigator.of(ctx).pop();
+                  await AttendanceService.createActivityTrack(
+                    name: nameCtrl.text.trim(),
+                    eventDate: eventDate,
+                    description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                    eventTime: eventTime,
+                  );
+                  await _loadActivities();
+                  if (!mounted) return;
+                  messenger.showSnackBar(const SnackBar(content: Text('Activity created')));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create activity: $e')));
+                }
+              },
+              child: const Text('Crear'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -71,9 +178,13 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
       );
     }
 
-    return Container(
-      color: backgroundColor,
-      child: SafeArea(
+    return Scaffold(
+      backgroundColor: backgroundColor,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showCreateActivityDialog,
+        child: const Icon(Icons.add),
+      ),
+      body: SafeArea(
         child: RefreshIndicator(
           color: accentColor,
           onRefresh: _loadActivities,

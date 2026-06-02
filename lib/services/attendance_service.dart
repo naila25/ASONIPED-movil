@@ -20,6 +20,39 @@ class AttendanceService {
     return [];
   }
 
+  static Future<int> createActivityTrack({
+    required String name,
+    required String eventDate,
+    String? description,
+    String? eventTime,
+    String? location,
+    bool? parkingEnabled,
+    bool? repeatAttendanceEnabled,
+    int? repeatAttendanceCooldownHours,
+  }) async {
+    final body = {
+      'name': name,
+      'event_date': eventDate,
+      if (description != null) 'description': description,
+      if (eventTime != null) 'event_time': eventTime,
+      if (location != null) 'location': location,
+      if (parkingEnabled != null) 'parking_enabled': parkingEnabled,
+      if (repeatAttendanceEnabled != null) 'repeat_attendance_enabled': repeatAttendanceEnabled,
+      if (repeatAttendanceCooldownHours != null) 'repeat_attendance_cooldown_hours': repeatAttendanceCooldownHours,
+    };
+
+    final response = await ApiService.post(Endpoints.activityTracks, body: body);
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('Failed to create activity: ${response.body}');
+    }
+
+    final parsed = jsonDecode(response.body) as Map<String, dynamic>;
+    final id = parsed['activity_track_id'] ?? parsed['id'] ?? parsed['data']?['id'];
+    if (id is int) return id;
+    if (id is String) return int.tryParse(id) ?? 0;
+    return 0;
+  }
+
   static Future<List<AttendanceRecord>> fetchAttendanceRecords({int limit = 50}) async {
     final response = await ApiService.get('${Endpoints.attendanceRecords}?limit=$limit');
     if (response.statusCode != 200) {
