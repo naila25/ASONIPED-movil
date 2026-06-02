@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/activity_track.dart';
+import 'activity_list_screen.dart';
 import '../services/attendance_service.dart';
 
 class GuestAttendanceScreen extends StatefulWidget {
@@ -236,40 +237,52 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               onPressed: _loading
-                                  ? null
-                                  : () async {
-                                      if (_activities.isEmpty) return;
-                                      final chosen = await showModalBottomSheet<ActivityTrack>(
-                                        context: context,
-                                        showDragHandle: true,
-                                        shape: const RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-                                        ),
-                                        builder: (context) {
-                                          return ListView.separated(
-                                            padding: const EdgeInsets.all(16),
-                                            itemCount: _activities.length,
-                                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                            itemBuilder: (context, index) {
-                                              final activity = _activities[index];
-                                              return ListTile(
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(14),
-                                                ),
-                                                tileColor: const Color(0xFFF8FAFC),
-                                                title: Text(activity.name),
-                                                onTap: () => Navigator.of(context).pop(activity),
-                                              );
-                                            },
-                                          );
-                                        },
-                                      );
-                                      if (chosen != null && mounted) {
-                                        setState(() {
-                                          _selectedActivity = chosen;
-                                        });
-                                      }
-                                    },
+                                    ? null
+                                    : () async {
+                                        if (_activities.isEmpty) return;
+                                        final chosen = await showModalBottomSheet<ActivityTrack?>(
+                                          context: context,
+                                          showDragHandle: true,
+                                          shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                                          ),
+                                          builder: (context) {
+                                            return ListView.separated(
+                                              padding: const EdgeInsets.all(16),
+                                              itemCount: _activities.length + 1,
+                                              separatorBuilder: (context, index) => const SizedBox(height: 8),
+                                              itemBuilder: (context, index) {
+                                                if (index == 0) {
+                                                  return ListTile(
+                                                    leading: const Icon(Icons.add),
+                                                    title: const Text('Crear nueva actividad'),
+                                                    tileColor: const Color(0xFFF8FAFC),
+                                                    onTap: () async {
+                                                      Navigator.of(context).pop();
+                                                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ActivityListScreen()));
+                                                      await _loadActivities();
+                                                    },
+                                                  );
+                                                }
+                                                final activity = _activities[index - 1];
+                                                return ListTile(
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius: BorderRadius.circular(14),
+                                                  ),
+                                                  tileColor: const Color(0xFFF8FAFC),
+                                                  title: Text(activity.name),
+                                                  onTap: () => Navigator.of(context).pop(activity),
+                                                );
+                                              },
+                                            );
+                                          },
+                                        );
+                                        if (chosen != null && mounted) {
+                                          setState(() {
+                                            _selectedActivity = chosen;
+                                          });
+                                        }
+                                      },
                               icon: const Icon(Icons.add, size: 20),
                               label: const Text(
                                 'Actividades',
