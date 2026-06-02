@@ -48,6 +48,22 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      final rolesData = data['user']?['roles'] ?? data['roles'];
+      final List<String> roles = [];
+      if (rolesData is String) {
+        roles.add(rolesData);
+      } else if (rolesData is Iterable) {
+        roles.addAll(rolesData.whereType<String>());
+      }
+
+      if (!roles.contains('admin')) {
+        setState(() {
+          _error = 'Acceso restringido: solo usuarios con rol administrador pueden ingresar.';
+          _loading = false;
+        });
+        return;
+      }
+
       await AuthService.saveToken(token);
 
       if (!mounted) return;
