@@ -73,18 +73,27 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     });
 
     try {
-      final decoded = jsonDecode(rawValue);
-      final recordId = decoded['record_id'];
-      final name = decoded['name'];
+      final decoded = jsonDecode(rawValue) as Map<String, dynamic>;
+      final recordId = decoded['record_id'] ?? decoded['recordId'];
+      final name = decoded['name'] ?? decoded['full_name'] ?? decoded['fullName'];
 
       if (recordId == null || name == null) {
         throw Exception('QR payload missing required fields.');
       }
 
+      final parsedRecordId = recordId is int
+          ? recordId
+          : int.tryParse(recordId?.toString() ?? '');
+      final parsedName = name?.toString();
+
+      if (parsedRecordId == null || parsedName == null || parsedName.isEmpty) {
+        throw Exception('QR payload missing required fields.');
+      }
+
       await AttendanceService.submitQrScan(
         activityTrackId: _selectedActivity!.id,
-        recordId: recordId as int,
-        name: name.toString(),
+        recordId: parsedRecordId,
+        name: parsedName,
       );
 
       setState(() {
@@ -311,10 +320,13 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     child: _cameraAvailable
                         ? MobileScanner(
                             controller: _scannerController,
-                            onDetect: (barcode, arguments) {
-                              final rawValue = barcode.rawValue;
-                              if (rawValue != null && !_scanned) {
-                                _processQrData(rawValue);
+                            onDetect: (capture) {
+                              for (final barcode in capture.barcodes) {
+                                final rawValue = barcode.rawValue;
+                                if (rawValue != null && !_scanned) {
+                                  _processQrData(rawValue);
+                                  break;
+                                }
                               }
                             },
                           )
