@@ -128,7 +128,10 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
         hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
         filled: true,
         fillColor: placeholderBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: borderColor),
@@ -234,6 +237,61 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             height: 48,
                             child: ElevatedButton.icon(
                               onPressed: _loading
+                                  ? null
+                                  : () async {
+                                      if (_activities.isEmpty) return;
+                                      final chosen =
+                                          await showModalBottomSheet<
+                                            ActivityTrack
+                                          >(
+                                            context: context,
+                                            showDragHandle: true,
+                                            shape: const RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.vertical(
+                                                    top: Radius.circular(22),
+                                                  ),
+                                            ),
+                                            builder: (context) {
+                                              return ListView.separated(
+                                                padding: const EdgeInsets.all(
+                                                  16,
+                                                ),
+                                                itemCount: _activities.length,
+                                                separatorBuilder: (_, __) =>
+                                                    const SizedBox(height: 8),
+                                                itemBuilder: (context, index) {
+                                                  final activity =
+                                                      _activities[index];
+                                                  return ListTile(
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            14,
+                                                          ),
+                                                    ),
+                                                    tileColor: const Color(
+                                                      0xFFF8FAFC,
+                                                    ),
+                                                    title: Text(activity.name),
+                                                    onTap: () => Navigator.of(
+                                                      context,
+                                                    ).pop(activity),
+                                                  );
+                                                },
+                                              );
+                                            },
+                                          );
+                                      if (chosen != null && mounted) {
+                                        setState(() {
+                                          _selectedActivity = chosen;
+                                        });
+                                      }
+                                    },
+                              icon: const Icon(Icons.add, size: 20),
+                              label: const Text(
+                                'Actividades',
+                                style: TextStyle(fontWeight: FontWeight.w700),
                                     ? null
                                     : () async {
                                         if (_activities.isEmpty) return;
@@ -295,6 +353,35 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
+                          const SizedBox(height: 14),
+                          DropdownButtonFormField<ActivityTrack>(
+                            initialValue: _selectedActivity,
+                            decoration: fieldDecoration(
+                              hintText: 'Elegir actividad',
+                            ),
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: accentColor,
+                            ),
+                            dropdownColor: Colors.white,
+                            style: const TextStyle(color: headingColor),
+                            items: _activities
+                                .map(
+                                  (activity) => DropdownMenuItem(
+                                    value: activity,
+                                    child: Text(activity.name),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedActivity = value;
+                              });
+                            },
+                            validator: (_) => _selectedActivity == null
+                                ? 'Choose an activity'
+                                : null,
+                          ),
                         ],
                       ),
                     ),
@@ -335,7 +422,8 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             controller: _fullNameController,
                             style: const TextStyle(color: headingColor),
                             decoration: fieldDecoration(hintText: 'Full name'),
-                            validator: (value) => value == null || value.trim().isEmpty
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
                                 ? 'Enter full name'
                                 : null,
                           ),
@@ -343,14 +431,18 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                           TextFormField(
                             controller: _cedulaController,
                             style: const TextStyle(color: headingColor),
-                            decoration: fieldDecoration(hintText: 'Cédula (optional)'),
+                            decoration: fieldDecoration(
+                              hintText: 'Cédula (optional)',
+                            ),
                             keyboardType: TextInputType.text,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _phoneController,
                             style: const TextStyle(color: headingColor),
-                            decoration: fieldDecoration(hintText: 'Phone (optional)'),
+                            decoration: fieldDecoration(
+                              hintText: 'Phone (optional)',
+                            ),
                             keyboardType: TextInputType.phone,
                           ),
                           const SizedBox(height: 16),
@@ -387,6 +479,9 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: accentColor,
                                 foregroundColor: Colors.white,
+                                disabledBackgroundColor: const Color(
+                                  0xFF16A34A,
+                                ),
                                 disabledBackgroundColor: accentColor,
                                 disabledForegroundColor: Colors.white70,
                                 shape: RoundedRectangleBorder(
@@ -400,7 +495,10 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                       height: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2.4,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
                                       ),
                                     )
                                   : const Text(
