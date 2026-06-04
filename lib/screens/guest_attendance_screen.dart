@@ -39,9 +39,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
       final items = await AttendanceService.fetchActivityTracks();
       setState(() {
         _activities = items;
-        if (_selectedActivity == null && _activities.isNotEmpty) {
-          _selectedActivity = _activities.first;
-        }
       });
     } catch (e) {
       setState(() {
@@ -102,7 +99,7 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     const headingColor = Color(0xFF0F172A);
     const textColor = Color(0xFF475569);
     const borderColor = Color(0xFFE2E8F0);
-    const accentColor = Color(0xFF12A56B);
+    const accentColor = Color(0xFF16A34A);
     const accentSoft = Color(0xFFE7FBF2);
     const placeholderBg = Color(0xFFF8FAFC);
 
@@ -247,34 +244,22 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                             borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                                           ),
                                           builder: (context) {
-                                            return ListView.separated(
-                                              padding: const EdgeInsets.all(16),
-                                              itemCount: _activities.length + 1,
-                                              separatorBuilder: (context, index) => const SizedBox(height: 8),
-                                              itemBuilder: (context, index) {
-                                                if (index == 0) {
-                                                  return ListTile(
-                                                    leading: const Icon(Icons.add),
-                                                    title: const Text('Crear nueva actividad'),
-                                                    tileColor: const Color(0xFFF8FAFC),
-                                                    onTap: () async {
-                                                      Navigator.of(context).pop();
-                                                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ActivityListScreen()));
-                                                      await _loadActivities();
-                                                    },
-                                                  );
-                                                }
-                                                final activity = _activities[index - 1];
-                                                return ListTile(
-                                                  shape: RoundedRectangleBorder(
-                                                    borderRadius: BorderRadius.circular(14),
-                                                  ),
-                                                  tileColor: const Color(0xFFF8FAFC),
-                                                  title: Text(activity.name),
-                                                  onTap: () => Navigator.of(context).pop(activity),
+                                                return ListView.separated(
+                                                  padding: const EdgeInsets.all(16),
+                                                  itemCount: _activities.length,
+                                                  separatorBuilder: (context, index) => const SizedBox(height: 8),
+                                                  itemBuilder: (context, index) {
+                                                    final activity = _activities[index];
+                                                    return ListTile(
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.circular(14),
+                                                      ),
+                                                      tileColor: const Color(0xFFF8FAFC),
+                                                      title: Text(activity.name),
+                                                      onTap: () => Navigator.of(context).pop(activity),
+                                                    );
+                                                  },
                                                 );
-                                              },
-                                            );
                                           },
                                         );
                                         if (chosen != null && mounted) {
@@ -283,10 +268,19 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                           });
                                         }
                                       },
-                              icon: const Icon(Icons.add, size: 20),
-                              label: const Text(
-                                'Actividades',
-                                style: TextStyle(fontWeight: FontWeight.w700),
+                              icon: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: accentColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.add, size: 20, color: Colors.white),
+                              ),
+                              label: Text(
+                                _selectedActivity?.name ?? 'Actividades',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: accentColor,
@@ -301,28 +295,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
-                          DropdownButtonFormField<ActivityTrack>(
-                            initialValue: _selectedActivity,
-                            decoration: fieldDecoration(hintText: 'Elegir actividad'),
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: accentColor),
-                            dropdownColor: Colors.white,
-                            style: const TextStyle(color: headingColor),
-                            items: _activities
-                                .map(
-                                  (activity) => DropdownMenuItem(
-                                    value: activity,
-                                    child: Text(activity.name),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedActivity = value;
-                              });
-                            },
-                            validator: (_) =>
-                                _selectedActivity == null ? 'Choose an activity' : null,
-                          ),
                         ],
                       ),
                     ),
@@ -411,11 +383,11 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                           SizedBox(
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: _loading ? null : _submit,
+                              onPressed: _loading || _selectedActivity == null ? null : _submit,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF16A34A),
+                                backgroundColor: accentColor,
                                 foregroundColor: Colors.white,
-                                disabledBackgroundColor: const Color(0xFF16A34A),
+                                disabledBackgroundColor: accentColor,
                                 disabledForegroundColor: Colors.white70,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
