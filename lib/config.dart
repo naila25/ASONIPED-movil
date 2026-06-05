@@ -11,6 +11,7 @@ String apiUrl(String path) {
 class Endpoints {
   static const String login = '/users/login';
   static const String activityTracks = '/api/attendance/activity-tracks';
+  static const String activeScanningTrack = '/api/attendance/activity-tracks/active-scanning';
   static const String qrScan = '/api/attendance/attendance-records/qr-scan';
   static const String manualAttendance = '/api/attendance/attendance-records/manual';
   static const String attendanceRecords = '/api/attendance/attendance-records';
