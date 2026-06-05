@@ -20,6 +20,21 @@ class AttendanceService {
     return [];
   }
 
+  static Future<ActivityTrack?> fetchActiveScanningTrack() async {
+    final response = await ApiService.get(Endpoints.activeScanningTrack);
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final activeTrack = body['activeTrack'] ?? body['data'];
+    if (activeTrack is Map<String, dynamic>) {
+      return ActivityTrack.fromJson(activeTrack);
+    }
+
+    return null;
+  }
+
   static Future<int> createActivityTrack({
     required String name,
     required String eventDate,
@@ -33,12 +48,12 @@ class AttendanceService {
     final body = {
       'name': name,
       'event_date': eventDate,
-      if (description != null) 'description': description,
-      if (eventTime != null) 'event_time': eventTime,
-      if (location != null) 'location': location,
-      if (parkingEnabled != null) 'parking_enabled': parkingEnabled,
-      if (repeatAttendanceEnabled != null) 'repeat_attendance_enabled': repeatAttendanceEnabled,
-      if (repeatAttendanceCooldownHours != null) 'repeat_attendance_cooldown_hours': repeatAttendanceCooldownHours,
+      'description': description,
+      'event_time': eventTime,
+      'location': location,
+      'parking_enabled': parkingEnabled,
+      'repeat_attendance_enabled': repeatAttendanceEnabled,
+      'repeat_attendance_cooldown_hours': repeatAttendanceCooldownHours,
     };
 
     final response = await ApiService.post(Endpoints.activityTracks, body: body);

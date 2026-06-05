@@ -21,12 +21,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   String? _statusMessage;
   List<ActivityTrack> _activities = [];
   ActivityTrack? _selectedActivity;
+  ActivityTrack? _activeScanningTrack;
 
   @override
   void initState() {
     super.initState();
     _requestCameraPermission();
     _loadActivities();
+    _loadActiveScanningTrack();
   }
 
   @override
@@ -58,11 +60,35 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
+  Future<void> _loadActiveScanningTrack() async {
+    try {
+      final activeTrack = await AttendanceService.fetchActiveScanningTrack();
+      if (activeTrack != null) {
+        setState(() {
+          _activeScanningTrack = activeTrack;
+          _selectedActivity = activeTrack;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Unable to load active scanning track: $e';
+      });
+    }
+  }
+
   Future<void> _processQrData(String rawValue) async {
     if (_scanned) return;
     if (_selectedActivity == null) {
       setState(() {
         _statusMessage = 'Select an activity before scanning.';
+      });
+      return;
+    }
+
+    if (_activeScanningTrack != null && _selectedActivity!.id != _activeScanningTrack!.id) {
+      setState(() {
+        _statusMessage =
+            'La actividad seleccionada no coincide con la actividad activa de escaneo. Selecciona ${_activeScanningTrack!.name} o detén el escaneo activo en el backend.';
       });
       return;
     }
@@ -145,7 +171,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: _activities.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (context, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final activity = _activities[index];
                     final selected = _selectedActivity?.id == activity.id;
@@ -249,7 +275,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Custom activity picker (opens a bottom sheet)
                     GestureDetector(
                       onTap: () => _showActivityPicker(context),
                       child: Container(
@@ -285,6 +310,33 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    if (_activeScanningTrack != null)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: accentSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              color: Color(0xFF256D47),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Actividad activa de escaneo: ${_activeScanningTrack!.name}. Selecciona esta actividad para evitar errores de incompatibilidad.',
+                                style: const TextStyle(
+                                  color: Color(0xFF164E2A),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.all(12),
@@ -294,7 +346,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                       ),
                       child: Text(
                         _statusMessage ??
-                            'Position the QR code inside the camera frame.',
+                            (_activeScanningTrack == null
+                                ? 'No hay actividad de escaneo activa. Inicia el escaneo en el backend antes de usar la cámara.'
+                                : 'Position the QR code inside the camera frame.'),
                         style: TextStyle(
                           color:
                               _statusMessage != null &&
