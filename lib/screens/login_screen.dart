@@ -144,7 +144,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   return SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -176,7 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       TextSpan(text: 'Donde la inclusión\n'),
                                       TextSpan(
                                         text: 'encuentra el futuro.',
-                                        style: TextStyle(color: Color(0xFF28B7E5)),
+                                        style: TextStyle(
+                                          color: Color(0xFF28B7E5),
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -193,65 +197,108 @@ class _LoginScreenState extends State<LoginScreen> {
                                 const SizedBox(height: 14),
                                 TextFormField(
                                   controller: _usernameController,
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
                                   cursorColor: accentEndColor,
                                   decoration: InputDecoration(
                                     hintText: 'Usuario',
-                                    hintStyle: const TextStyle(color: Color(0xFF8390A8), fontSize: 14),
+                                    hintStyle: const TextStyle(
+                                      color: Color(0xFF8390A8),
+                                      fontSize: 14,
+                                    ),
                                     filled: true,
                                     fillColor: fieldColor,
                                     isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 9,
+                                    ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Color(0xFF2A3550)),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF2A3550),
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Color(0xFF2D7DFF), width: 1.2),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF2D7DFF),
+                                        width: 1.2,
+                                      ),
                                     ),
                                     errorBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Colors.redAccent),
+                                      borderSide: const BorderSide(
+                                        color: Colors.redAccent,
+                                      ),
                                     ),
                                     focusedErrorBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Colors.redAccent, width: 1.2),
+                                      borderSide: const BorderSide(
+                                        color: Colors.redAccent,
+                                        width: 1.2,
+                                      ),
                                     ),
                                   ),
-                                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                                  validator: (v) =>
+                                      (v == null || v.trim().isEmpty)
+                                      ? 'Required'
+                                      : null,
                                 ),
                                 const SizedBox(height: 8),
                                 TextFormField(
                                   controller: _passwordController,
-                                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
                                   cursorColor: accentEndColor,
                                   obscureText: true,
                                   decoration: InputDecoration(
                                     hintText: 'Contraseña',
-                                    hintStyle: const TextStyle(color: Color(0xFF8390A8), fontSize: 14),
+                                    hintStyle: const TextStyle(
+                                      color: Color(0xFF8390A8),
+                                      fontSize: 14,
+                                    ),
                                     filled: true,
                                     fillColor: fieldColor,
                                     isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                      vertical: 9,
+                                    ),
                                     enabledBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Color(0xFF2A3550)),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF2A3550),
+                                      ),
                                     ),
                                     focusedBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Color(0xFF2D7DFF), width: 1.2),
+                                      borderSide: const BorderSide(
+                                        color: Color(0xFF2D7DFF),
+                                        width: 1.2,
+                                      ),
                                     ),
                                     errorBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Colors.redAccent),
+                                      borderSide: const BorderSide(
+                                        color: Colors.redAccent,
+                                      ),
                                     ),
                                     focusedErrorBorder: OutlineInputBorder(
                                       borderRadius: BorderRadius.circular(7),
-                                      borderSide: const BorderSide(color: Colors.redAccent, width: 1.2),
+                                      borderSide: const BorderSide(
+                                        color: Colors.redAccent,
+                                        width: 1.2,
+                                      ),
                                     ),
                                   ),
-                                  validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Required'
+                                      : null,
                                 ),
                                 const SizedBox(height: 10),
                                 if (_error != null)
@@ -259,7 +306,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: Text(
                                       _error!,
-                                      style: const TextStyle(color: Colors.redAccent, height: 1.2),
+                                      style: const TextStyle(
+                                        color: Colors.redAccent,
+                                        height: 1.2,
+                                      ),
                                     ),
                                   ),
                                 DecoratedBox(
@@ -282,11 +332,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                       backgroundColor: Colors.transparent,
                                       foregroundColor: Colors.white,
                                       shadowColor: Colors.transparent,
-                                      disabledBackgroundColor: Colors.transparent,
+                                      disabledBackgroundColor:
+                                          Colors.transparent,
                                       disabledForegroundColor: Colors.white70,
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
                                       minimumSize: const Size.fromHeight(38),
-                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(7),
                                       ),
@@ -297,7 +351,10 @@ class _LoginScreenState extends State<LoginScreen> {
                                             height: 18,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2.2,
-                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Colors.white,
+                                                  ),
                                             ),
                                           )
                                         : const Text(
