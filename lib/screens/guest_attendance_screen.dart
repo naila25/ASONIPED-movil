@@ -288,44 +288,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                         });
                                       }
                                     },
-                              icon: const Icon(Icons.add, size: 20),
-                              label: const Text(
-                                'Actividades',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                                    ? null
-                                    : () async {
-                                        if (_activities.isEmpty) return;
-                                        final chosen = await showModalBottomSheet<ActivityTrack?>(
-                                          context: context,
-                                          showDragHandle: true,
-                                          shape: const RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-                                          ),
-                                          builder: (context) {
-                                                return ListView.separated(
-                                                  padding: const EdgeInsets.all(16),
-                                                  itemCount: _activities.length,
-                                                  separatorBuilder: (context, index) => const SizedBox(height: 8),
-                                                  itemBuilder: (context, index) {
-                                                    final activity = _activities[index];
-                                                    return ListTile(
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius: BorderRadius.circular(14),
-                                                      ),
-                                                      tileColor: const Color(0xFFF8FAFC),
-                                                      title: Text(activity.name),
-                                                      onTap: () => Navigator.of(context).pop(activity),
-                                                    );
-                                                  },
-                                                );
-                                          },
-                                        );
-                                        if (chosen != null && mounted) {
-                                          setState(() {
-                                            _selectedActivity = chosen;
-                                          });
-                                        }
-                                      },
                               icon: Container(
                                 width: 36,
                                 height: 36,
@@ -352,7 +314,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(height: 14),
                           const SizedBox(height: 14),
                           DropdownButtonFormField<ActivityTrack>(
                             initialValue: _selectedActivity,
@@ -479,9 +440,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: accentColor,
                                 foregroundColor: Colors.white,
-                                disabledBackgroundColor: const Color(
-                                  0xFF16A34A,
-                                ),
                                 disabledBackgroundColor: accentColor,
                                 disabledForegroundColor: Colors.white70,
                                 shape: RoundedRectangleBorder(
