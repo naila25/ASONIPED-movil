@@ -73,18 +73,27 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     });
 
     try {
-      final decoded = jsonDecode(rawValue);
-      final recordId = decoded['record_id'];
-      final name = decoded['name'];
+      final decoded = jsonDecode(rawValue) as Map<String, dynamic>;
+      final recordId = decoded['record_id'] ?? decoded['recordId'];
+      final name = decoded['name'] ?? decoded['full_name'] ?? decoded['fullName'];
 
       if (recordId == null || name == null) {
         throw Exception('QR payload missing required fields.');
       }
 
+      final parsedRecordId = recordId is int
+          ? recordId
+          : int.tryParse(recordId?.toString() ?? '');
+      final parsedName = name?.toString();
+
+      if (parsedRecordId == null || parsedName == null || parsedName.isEmpty) {
+        throw Exception('QR payload missing required fields.');
+      }
+
       await AttendanceService.submitQrScan(
         activityTrackId: _selectedActivity!.id,
-        recordId: recordId as int,
-        name: name.toString(),
+        recordId: parsedRecordId,
+        name: parsedName,
       );
 
       setState(() {
@@ -100,6 +109,66 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         _scanned = false;
       });
     }
+  }
+
+  void _showActivityPicker(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      backgroundColor: Colors.white,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF1F5F9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Color(0xFF64748B),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _activities.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final activity = _activities[index];
+                    final selected = _selectedActivity?.id == activity.id;
+                    return ListTile(
+                      title: Text(activity.name),
+                      selected: selected,
+                      selectedTileColor: const Color(0xFFF3F4F6),
+                      onTap: () {
+                        setState(() {
+                          _selectedActivity = activity;
+                        });
+                        Navigator.of(context).pop();
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -141,10 +210,7 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 padding: EdgeInsets.all(18),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.qr_code_scanner_rounded,
-                      color: accentColor,
-                    ),
+                    Icon(Icons.qr_code_scanner_rounded, color: accentColor),
                     SizedBox(width: 10),
                     Text(
                       'Escanear QR',
@@ -183,37 +249,41 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<ActivityTrack>(
-                      initialValue: _selectedActivity,
-                      decoration: InputDecoration(
-                        hintText: 'Select activity',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-                        enabledBorder: OutlineInputBorder(
+                    // Custom activity picker (opens a bottom sheet)
+                    GestureDetector(
+                      onTap: () => _showActivityPicker(context),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: accentColor,
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: borderColor),
                         ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: accentColor, width: 1.4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _selectedActivity?.name ??
+                                    'Selecciona una actividad',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Colors.white,
+                            ),
+                          ],
                         ),
                       ),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: accentColor),
-                      dropdownColor: Colors.white,
-                      style: const TextStyle(color: headingColor),
-                      items: _activities
-                          .map(
-                            (activity) => DropdownMenuItem(
-                              value: activity,
-                              child: Text(activity.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) => setState(() {
-                        _selectedActivity = value;
-                      }),
                     ),
                     const SizedBox(height: 16),
                     Container(
@@ -223,9 +293,12 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        _statusMessage ?? 'Position the QR code inside the camera frame.',
+                        _statusMessage ??
+                            'Position the QR code inside the camera frame.',
                         style: TextStyle(
-                          color: _statusMessage != null && _statusMessage!.startsWith('QR scan failed')
+                          color:
+                              _statusMessage != null &&
+                                  _statusMessage!.startsWith('QR scan failed')
                               ? Colors.red.shade700
                               : const Color(0xFF166534),
                           height: 1.3,
@@ -246,17 +319,17 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     borderRadius: BorderRadius.circular(16),
                     child: _cameraAvailable
                         ? MobileScanner(
-                          controller: _scannerController,
-                          onDetect: (capture) {
-                            for (final barcode in capture.barcodes) {
-                              final rawValue = barcode.rawValue;
-                              if (rawValue != null && !_scanned) {
-                                _processQrData(rawValue);
-                                break;
+                            controller: _scannerController,
+                            onDetect: (capture) {
+                              for (final barcode in capture.barcodes) {
+                                final rawValue = barcode.rawValue;
+                                if (rawValue != null && !_scanned) {
+                                  _processQrData(rawValue);
+                                  break;
+                                }
                               }
-                            }
-                          },
-                        )
+                            },
+                          )
                         : const Center(
                             child: Padding(
                               padding: EdgeInsets.all(24),

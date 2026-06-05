@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/activity_track.dart';
+import 'activity_list_screen.dart';
 import '../services/attendance_service.dart';
 
 class GuestAttendanceScreen extends StatefulWidget {
@@ -38,9 +39,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
       final items = await AttendanceService.fetchActivityTracks();
       setState(() {
         _activities = items;
-        if (_selectedActivity == null && _activities.isNotEmpty) {
-          _selectedActivity = _activities.first;
-        }
       });
     } catch (e) {
       setState(() {
@@ -101,7 +99,7 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     const headingColor = Color(0xFF0F172A);
     const textColor = Color(0xFF475569);
     const borderColor = Color(0xFFE2E8F0);
-    const accentColor = Color(0xFF12A56B);
+    const accentColor = Color(0xFF16A34A);
     const accentSoft = Color(0xFFE7FBF2);
     const placeholderBg = Color(0xFFF8FAFC);
 
@@ -130,7 +128,10 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
         hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
         filled: true,
         fillColor: placeholderBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 15,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: borderColor),
@@ -239,31 +240,48 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                   ? null
                                   : () async {
                                       if (_activities.isEmpty) return;
-                                      final chosen = await showModalBottomSheet<ActivityTrack>(
-                                        context: context,
-                                        showDragHandle: true,
-                                        shape: const RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-                                        ),
-                                        builder: (context) {
-                                          return ListView.separated(
-                                            padding: const EdgeInsets.all(16),
-                                            itemCount: _activities.length,
-                                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                            itemBuilder: (context, index) {
-                                              final activity = _activities[index];
-                                              return ListTile(
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(14),
+                                      final chosen =
+                                          await showModalBottomSheet<
+                                            ActivityTrack
+                                          >(
+                                            context: context,
+                                            showDragHandle: true,
+                                            shape: const RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.vertical(
+                                                    top: Radius.circular(22),
+                                                  ),
+                                            ),
+                                            builder: (context) {
+                                              return ListView.separated(
+                                                padding: const EdgeInsets.all(
+                                                  16,
                                                 ),
-                                                tileColor: const Color(0xFFF8FAFC),
-                                                title: Text(activity.name),
-                                                onTap: () => Navigator.of(context).pop(activity),
+                                                itemCount: _activities.length,
+                                                separatorBuilder: (_, __) =>
+                                                    const SizedBox(height: 8),
+                                                itemBuilder: (context, index) {
+                                                  final activity =
+                                                      _activities[index];
+                                                  return ListTile(
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            14,
+                                                          ),
+                                                    ),
+                                                    tileColor: const Color(
+                                                      0xFFF8FAFC,
+                                                    ),
+                                                    title: Text(activity.name),
+                                                    onTap: () => Navigator.of(
+                                                      context,
+                                                    ).pop(activity),
+                                                  );
+                                                },
                                               );
                                             },
                                           );
-                                        },
-                                      );
                                       if (chosen != null && mounted) {
                                         setState(() {
                                           _selectedActivity = chosen;
@@ -274,6 +292,53 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                               label: const Text(
                                 'Actividades',
                                 style: TextStyle(fontWeight: FontWeight.w700),
+                                    ? null
+                                    : () async {
+                                        if (_activities.isEmpty) return;
+                                        final chosen = await showModalBottomSheet<ActivityTrack?>(
+                                          context: context,
+                                          showDragHandle: true,
+                                          shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+                                          ),
+                                          builder: (context) {
+                                                return ListView.separated(
+                                                  padding: const EdgeInsets.all(16),
+                                                  itemCount: _activities.length,
+                                                  separatorBuilder: (context, index) => const SizedBox(height: 8),
+                                                  itemBuilder: (context, index) {
+                                                    final activity = _activities[index];
+                                                    return ListTile(
+                                                      shape: RoundedRectangleBorder(
+                                                        borderRadius: BorderRadius.circular(14),
+                                                      ),
+                                                      tileColor: const Color(0xFFF8FAFC),
+                                                      title: Text(activity.name),
+                                                      onTap: () => Navigator.of(context).pop(activity),
+                                                    );
+                                                  },
+                                                );
+                                          },
+                                        );
+                                        if (chosen != null && mounted) {
+                                          setState(() {
+                                            _selectedActivity = chosen;
+                                          });
+                                        }
+                                      },
+                              icon: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: accentColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Icon(Icons.add, size: 20, color: Colors.white),
+                              ),
+                              label: Text(
+                                _selectedActivity?.name ?? 'Actividades',
+                                style: const TextStyle(fontWeight: FontWeight.w700),
                               ),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: accentColor,
@@ -288,10 +353,16 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             ),
                           ),
                           const SizedBox(height: 14),
+                          const SizedBox(height: 14),
                           DropdownButtonFormField<ActivityTrack>(
                             initialValue: _selectedActivity,
-                            decoration: fieldDecoration(hintText: 'Elegir actividad'),
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: accentColor),
+                            decoration: fieldDecoration(
+                              hintText: 'Elegir actividad',
+                            ),
+                            icon: const Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: accentColor,
+                            ),
                             dropdownColor: Colors.white,
                             style: const TextStyle(color: headingColor),
                             items: _activities
@@ -307,8 +378,9 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                 _selectedActivity = value;
                               });
                             },
-                            validator: (_) =>
-                                _selectedActivity == null ? 'Choose an activity' : null,
+                            validator: (_) => _selectedActivity == null
+                                ? 'Choose an activity'
+                                : null,
                           ),
                         ],
                       ),
@@ -350,7 +422,8 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                             controller: _fullNameController,
                             style: const TextStyle(color: headingColor),
                             decoration: fieldDecoration(hintText: 'Full name'),
-                            validator: (value) => value == null || value.trim().isEmpty
+                            validator: (value) =>
+                                value == null || value.trim().isEmpty
                                 ? 'Enter full name'
                                 : null,
                           ),
@@ -358,14 +431,18 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                           TextFormField(
                             controller: _cedulaController,
                             style: const TextStyle(color: headingColor),
-                            decoration: fieldDecoration(hintText: 'Cédula (optional)'),
+                            decoration: fieldDecoration(
+                              hintText: 'Cédula (optional)',
+                            ),
                             keyboardType: TextInputType.text,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _phoneController,
                             style: const TextStyle(color: headingColor),
-                            decoration: fieldDecoration(hintText: 'Phone (optional)'),
+                            decoration: fieldDecoration(
+                              hintText: 'Phone (optional)',
+                            ),
                             keyboardType: TextInputType.phone,
                           ),
                           const SizedBox(height: 16),
@@ -398,11 +475,14 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                           SizedBox(
                             height: 50,
                             child: ElevatedButton(
-                              onPressed: _loading ? null : _submit,
+                              onPressed: _loading || _selectedActivity == null ? null : _submit,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF16A34A),
+                                backgroundColor: accentColor,
                                 foregroundColor: Colors.white,
-                                disabledBackgroundColor: const Color(0xFF16A34A),
+                                disabledBackgroundColor: const Color(
+                                  0xFF16A34A,
+                                ),
+                                disabledBackgroundColor: accentColor,
                                 disabledForegroundColor: Colors.white70,
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -415,7 +495,10 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                                       height: 20,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2.4,
-                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
                                       ),
                                     )
                                   : const Text(

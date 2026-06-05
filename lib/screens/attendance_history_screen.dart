@@ -51,7 +51,6 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
     const textColor = Color(0xFF475569);
     const borderColor = Color(0xFFE2E8F0);
     const accentColor = Color(0xFF12A56B);
-    const accentSoft = Color(0xFFE7FBF2);
 
     Widget sectionCard({required Widget child}) {
       return Container(
