@@ -22,6 +22,13 @@ class _HomeScreenState extends State<HomeScreen> {
     AttendanceHistoryScreen(),
   ];
 
+  static const _titles = [
+    'Actividades',
+    'Escanear QR',
+    'Registro manual',
+    'Reportes',
+  ];
+
   Future<void> _logout(BuildContext context) async {
     await AuthService.deleteToken();
     if (context.mounted) {
@@ -29,19 +36,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Asoniped Attendance'),
+        title: Text(_titles[_selectedIndex]),
         actions: [
           IconButton(
+            tooltip: 'Cerrar sesión',
             onPressed: () => _logout(context),
             icon: const Icon(Icons.logout),
           ),
@@ -50,15 +52,12 @@ class _HomeScreenState extends State<HomeScreen> {
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: _onItemTapped,
+        onDestinationSelected: (index) => setState(() => _selectedIndex = index),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.list), label: 'Activities'),
-          NavigationDestination(
-            icon: Icon(Icons.qr_code_scanner),
-            label: 'Scan',
-          ),
-          NavigationDestination(icon: Icon(Icons.person_add), label: 'Guest'),
-          NavigationDestination(icon: Icon(Icons.history), label: 'History'),
+          NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Actividades'),
+          NavigationDestination(icon: Icon(Icons.qr_code_scanner_outlined), selectedIcon: Icon(Icons.qr_code_scanner), label: 'QR'),
+          NavigationDestination(icon: Icon(Icons.person_add_outlined), selectedIcon: Icon(Icons.person_add), label: 'Manual'),
+          NavigationDestination(icon: Icon(Icons.bar_chart_outlined), selectedIcon: Icon(Icons.bar_chart), label: 'Reportes'),
         ],
       ),
     );
