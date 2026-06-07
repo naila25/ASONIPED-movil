@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -5,7 +6,11 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/activity_track.dart';
+import '../models/attendance_record.dart';
 import '../services/attendance_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/ui_helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class QrScannerScreen extends StatefulWidget {
   const QrScannerScreen({super.key});
@@ -18,363 +23,306 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   final MobileScannerController _scannerController = MobileScannerController();
   bool _cameraAvailable = false;
   bool _scanned = false;
+  bool _isScanning = false;
+  bool _loading = false;
   String? _statusMessage;
+  bool _statusIsError = false;
   List<ActivityTrack> _activities = [];
   ActivityTrack? _selectedActivity;
   ActivityTrack? _activeScanningTrack;
+  List<AttendanceRecord> _sessionRecords = [];
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _requestCameraPermission();
-    _loadActivities();
-    _loadActiveScanningTrack();
+    _bootstrap();
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _scannerController.dispose();
     super.dispose();
   }
 
+  Future<void> _bootstrap() async {
+    await Future.wait([_loadActivities(), _syncScanningState()]);
+  }
+
   Future<void> _requestCameraPermission() async {
     final status = await Permission.camera.request();
-    setState(() {
-      _cameraAvailable = status.isGranted;
-    });
+    if (mounted) setState(() => _cameraAvailable = status.isGranted);
   }
 
   Future<void> _loadActivities() async {
     try {
-      final items = await AttendanceService.fetchActivityTracks();
+      final result = await AttendanceService.fetchActivityTracks(limit: 100);
+      final nonParking = result.items.where((a) => !a.isParking && !a.isArchived).toList();
       setState(() {
-        _activities = items;
-        if (_selectedActivity == null && _activities.isNotEmpty) {
-          _selectedActivity = _activities.first;
+        _activities = nonParking;
+        if (_selectedActivity == null && nonParking.isNotEmpty) {
+          _selectedActivity = nonParking.first;
         }
       });
     } catch (e) {
-      setState(() {
-        _statusMessage = 'Unable to load activities: $e';
-      });
+      _setStatus('No se pudieron cargar actividades: $e', isError: true);
+      if (mounted) handleApiError(context, e);
     }
   }
 
-  Future<void> _loadActiveScanningTrack() async {
+  Future<void> _syncScanningState() async {
     try {
       final activeTrack = await AttendanceService.fetchActiveScanningTrack();
-      if (activeTrack != null) {
-        setState(() {
-          _activeScanningTrack = activeTrack;
+      setState(() {
+        _activeScanningTrack = activeTrack;
+        _isScanning = activeTrack != null;
+        if (activeTrack != null) {
           _selectedActivity = activeTrack;
-        });
+        }
+      });
+      if (activeTrack != null) {
+        await _loadSessionRecords(activeTrack.id);
+        _startAutoRefresh();
+      } else {
+        _stopAutoRefresh();
       }
     } catch (e) {
+      _setStatus('Error al sincronizar sesión: $e', isError: true);
+    }
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (_selectedActivity != null && _isScanning) {
+        _loadSessionRecords(_selectedActivity!.id, silent: true);
+      }
+    });
+  }
+
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  Future<void> _loadSessionRecords(int activityId, {bool silent = false}) async {
+    try {
+      final records = await AttendanceService.fetchAttendanceByActivity(activityId, limit: 100);
+      if (mounted) setState(() => _sessionRecords = records);
+    } catch (e) {
+      if (!silent && mounted) handleApiError(context, e);
+    }
+  }
+
+  void _setStatus(String message, {bool isError = false}) {
+    setState(() {
+      _statusMessage = message;
+      _statusIsError = isError;
+    });
+  }
+
+  Future<void> _startScanning() async {
+    if (_selectedActivity == null) {
+      _setStatus('Selecciona una actividad primero.', isError: true);
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AttendanceService.startScanning(_selectedActivity!.id);
+      await _syncScanningState();
+      _setStatus('Escaneo iniciado para ${_selectedActivity!.name}.');
+    } catch (e) {
+      _setStatus(e.toString(), isError: true);
+      if (mounted) handleApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _stopScanning() async {
+    final id = _selectedActivity?.id ?? _activeScanningTrack?.id;
+    if (id == null) return;
+    setState(() => _loading = true);
+    try {
+      await AttendanceService.stopScanning(id);
+      _stopAutoRefresh();
       setState(() {
-        _statusMessage = 'Unable to load active scanning track: $e';
+        _isScanning = false;
+        _activeScanningTrack = null;
       });
+      _setStatus('Escaneo detenido.');
+    } catch (e) {
+      setState(() => _isScanning = false);
+      _setStatus(e.toString(), isError: true);
+      if (mounted) handleApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _processQrData(String rawValue) async {
-    if (_scanned) return;
+    if (_scanned || !_isScanning) return;
     if (_selectedActivity == null) {
-      setState(() {
-        _statusMessage = 'Select an activity before scanning.';
-      });
+      _setStatus('Selecciona una actividad antes de escanear.', isError: true);
       return;
     }
-
     if (_activeScanningTrack != null && _selectedActivity!.id != _activeScanningTrack!.id) {
-      setState(() {
-        _statusMessage =
-            'La actividad seleccionada no coincide con la actividad activa de escaneo. Selecciona ${_activeScanningTrack!.name} o detén el escaneo activo en el backend.';
-      });
+      _setStatus(
+        'La actividad no coincide con la sesión activa (${_activeScanningTrack!.name}).',
+        isError: true,
+      );
       return;
     }
 
     setState(() {
       _scanned = true;
-      _statusMessage = 'Processing QR code...';
+      _statusMessage = 'Procesando código QR...';
+      _statusIsError = false;
     });
 
     try {
       final decoded = jsonDecode(rawValue) as Map<String, dynamic>;
       final recordId = decoded['record_id'] ?? decoded['recordId'];
       final name = decoded['name'] ?? decoded['full_name'] ?? decoded['fullName'];
-
-      if (recordId == null || name == null) {
-        throw Exception('QR payload missing required fields.');
-      }
-
-      final parsedRecordId = recordId is int
-          ? recordId
-          : int.tryParse(recordId?.toString() ?? '');
+      final parsedRecordId = recordId is int ? recordId : int.tryParse(recordId?.toString() ?? '');
       final parsedName = name?.toString();
 
       if (parsedRecordId == null || parsedName == null || parsedName.isEmpty) {
-        throw Exception('QR payload missing required fields.');
+        throw Exception('El QR no contiene record_id y name.');
       }
 
-      await AttendanceService.submitQrScan(
+      final record = await AttendanceService.submitQrScan(
         activityTrackId: _selectedActivity!.id,
         recordId: parsedRecordId,
         name: parsedName,
       );
 
       setState(() {
-        _statusMessage = 'Check-in successful for $name.';
+        _sessionRecords = [record, ..._sessionRecords.where((r) => r.id != record.id)];
       });
+      _setStatus('Asistencia registrada: ${record.fullName}.');
     } catch (e) {
-      setState(() {
-        _statusMessage = 'QR scan failed: $e';
-      });
+      _setStatus(e.toString(), isError: true);
+      if (mounted) handleApiError(context, e);
     } finally {
       await Future.delayed(const Duration(seconds: 2));
-      setState(() {
-        _scanned = false;
-      });
+      if (mounted) setState(() => _scanned = false);
     }
   }
 
-  void _showActivityPicker(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      backgroundColor: Colors.white,
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Center(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(vertical: 12),
-                  padding: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF1F5F9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Color(0xFF64748B),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              ),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _activities.length,
-                  separatorBuilder: (context, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final activity = _activities[index];
-                    final selected = _selectedActivity?.id == activity.id;
-                    return ListTile(
-                      title: Text(activity.name),
-                      selected: selected,
-                      selectedTileColor: const Color(0xFFF3F4F6),
-                      onTap: () {
-                        setState(() {
-                          _selectedActivity = activity;
-                        });
-                        Navigator.of(context).pop();
-                      },
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  int get _beneficiariosCount =>
+      _sessionRecords.where((r) => r.attendanceType == 'beneficiario').length;
+
+  int get _guestsCount => _sessionRecords.where((r) => r.attendanceType == 'guest').length;
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFF5F7FB);
-    const cardColor = Colors.white;
-    const headingColor = Color(0xFF0F172A);
-    const textColor = Color(0xFF475569);
-    const borderColor = Color(0xFFE2E8F0);
-    const accentColor = Color(0xFF12A56B);
-    const accentSoft = Color(0xFFE7FBF2);
-
-    Widget sectionCard({required Widget child}) {
-      return Container(
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0F0F172A),
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: child,
-      );
-    }
-
     return Container(
-      color: backgroundColor,
+      color: AppColors.background,
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            sectionCard(
-              child: const Padding(
-                padding: EdgeInsets.all(18),
-                child: Row(
-                  children: [
-                    Icon(Icons.qr_code_scanner_rounded, color: accentColor),
-                    SizedBox(width: 10),
-                    Text(
-                      'Escanear QR',
-                      style: TextStyle(
-                        color: headingColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+        child: RefreshIndicator(
+          color: AppColors.accent,
+          onRefresh: _bootstrap,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              SectionCard(
+                padding: const EdgeInsets.all(18),
+                child: const SectionHeader(
+                  icon: Icons.qr_code_scanner_rounded,
+                  title: 'Escanear QR',
+                  subtitle: 'Inicia la sesión, escanea beneficiarios y revisa resultados en vivo.',
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            sectionCard(
-              child: Padding(
+              SectionCard(
                 padding: const EdgeInsets.all(18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Text(
-                      'Elegir actividad',
-                      style: TextStyle(
-                        color: headingColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
+                      'Actividad',
+                      style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
                     ),
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Selecciona una actividad antes de abrir la cámara.',
-                      style: TextStyle(
-                        color: textColor,
-                        fontSize: 13,
-                        height: 1.35,
+                    const SizedBox(height: 10),
+                    ElevatedButton(
+                      onPressed: _activities.isEmpty
+                          ? null
+                          : () async {
+                              final chosen = await showActivityPickerSheet<ActivityTrack>(
+                                context,
+                                activities: _activities,
+                                label: (a) => a.name,
+                                selected: _selectedActivity,
+                              );
+                              if (chosen != null && mounted) {
+                                setState(() => _selectedActivity = chosen);
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
+                      child: Text(_selectedActivity?.name ?? 'Seleccionar actividad'),
                     ),
-                    const SizedBox(height: 16),
-                    GestureDetector(
-                      onTap: () => _showActivityPicker(context),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: accentColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _selectedActivity?.name ??
-                                    'Selecciona una actividad',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _loading || _isScanning ? null : _startScanning,
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Iniciar'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              foregroundColor: Colors.white,
                             ),
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: Colors.white,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _loading || !_isScanning ? null : _stopScanning,
+                            icon: const Icon(Icons.stop),
+                            label: const Text('Detener'),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     if (_activeScanningTrack != null)
-                      Container(
-                        decoration: BoxDecoration(
-                          color: accentSoft,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.all(14),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.info_outline,
-                              color: Color(0xFF256D47),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'Actividad activa de escaneo: ${_activeScanningTrack!.name}. Selecciona esta actividad para evitar errores de incompatibilidad.',
-                                style: const TextStyle(
-                                  color: Color(0xFF164E2A),
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      StatusBanner(
+                        message: _isScanning
+                            ? 'Sesión activa: ${_activeScanningTrack!.name}'
+                            : 'No hay sesión activa.',
+                        isWarning: !_isScanning,
                       ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: accentSoft,
-                        borderRadius: BorderRadius.circular(12),
+                    if (_statusMessage != null) ...[
+                      const SizedBox(height: 10),
+                      StatusBanner(
+                        message: _statusMessage!,
+                        isError: _statusIsError,
                       ),
-                      child: Text(
-                        _statusMessage ??
-                            (_activeScanningTrack == null
-                                ? 'No hay actividad de escaneo activa. Inicia el escaneo en el backend antes de usar la cámara.'
-                                : 'Position the QR code inside the camera frame.'),
-                        style: TextStyle(
-                          color:
-                              _statusMessage != null &&
-                                  _statusMessage!.startsWith('QR scan failed')
-                              ? Colors.red.shade700
-                              : const Color(0xFF166534),
-                          height: 1.3,
-                        ),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            sectionCard(
-              child: Padding(
+              SectionCard(
                 padding: const EdgeInsets.all(12),
                 child: AspectRatio(
-                  aspectRatio: 0.78,
+                  aspectRatio: 0.85,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: _cameraAvailable
-                        ? MobileScanner(
+                    child: !_cameraAvailable
+                        ? const Center(child: Text('Se requiere permiso de cámara.'))
+                        : MobileScanner(
                             controller: _scannerController,
                             onDetect: (capture) {
+                              if (!_isScanning) return;
                               for (final barcode in capture.barcodes) {
                                 final rawValue = barcode.rawValue;
                                 if (rawValue != null && !_scanned) {
@@ -383,25 +331,60 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                                 }
                               }
                             },
-                          )
-                        : const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(24),
-                              child: Text(
-                                'Camera permission is required to scan QR codes.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: headingColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
                           ),
                   ),
                 ),
               ),
-            ),
-          ],
+              if (_selectedActivity != null) ...[
+                SectionCard(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Asistencias en vivo',
+                            style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
+                          ),
+                          Text(
+                            '$_beneficiariosCount benef. · $_guestsCount invitados',
+                            style: const TextStyle(fontSize: 12, color: AppColors.text),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      if (_sessionRecords.isEmpty)
+                        const AppEmptyState(
+                          icon: Icons.people_outline,
+                          title: 'Sin registros aún',
+                          description: 'Los escaneos válidos aparecerán aquí automáticamente.',
+                        )
+                      else
+                        ..._sessionRecords.take(20).map(
+                              (record) => ListTile(
+                                contentPadding: EdgeInsets.zero,
+                                leading: CircleAvatar(
+                                  backgroundColor: AppColors.accentSoft,
+                                  child: Icon(
+                                    record.attendanceType == 'beneficiario'
+                                        ? Icons.badge_outlined
+                                        : Icons.person_outline,
+                                    color: AppColors.accent,
+                                    size: 20,
+                                  ),
+                                ),
+                                title: Text(record.fullName),
+                                subtitle: Text('${record.typeLabel} · ${record.methodLabel}'),
+                              ),
+                            ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );

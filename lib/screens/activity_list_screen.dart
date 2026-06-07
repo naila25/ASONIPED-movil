@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../config.dart';
 import '../models/activity_track.dart';
 import '../services/attendance_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/ui_helpers.dart';
+import '../widgets/activity_form_dialog.dart';
+import '../widgets/app_widgets.dart';
 
 class ActivityListScreen extends StatefulWidget {
   const ActivityListScreen({super.key});
@@ -13,11 +19,19 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
   bool _loading = true;
   String? _error;
   List<ActivityTrack> _activities = [];
+  bool _showArchived = false;
+  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadActivities();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadActivities() async {
@@ -27,123 +41,122 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
     });
 
     try {
-      final items = await AttendanceService.fetchActivityTracks();
-      setState(() {
-        _activities = items;
-      });
+      final result = await AttendanceService.fetchActivityTracks(
+        limit: 100,
+        includeArchived: _showArchived,
+        search: _searchCtrl.text,
+      );
+      setState(() => _activities = result.items);
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
+      if (mounted) handleApiError(context, e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _showCreateActivityDialog() async {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    DateTime? pickedDate;
-    TimeOfDay? pickedTime;
+  Future<void> _createActivity() async {
+    final data = await showActivityFormDialog(context, isEdit: false);
+    if (data == null || !mounted) return;
+    await saveActivityForm(context, data: data, onSaved: _loadActivities);
+  }
 
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Crear actividad'),
-          content: StatefulBuilder(builder: (context, setState) {
-            return Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Nombre'),
-                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                    ),
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(labelText: 'Descripción (opcional)'),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(pickedDate?.toIso8601String().split('T').first ?? 'Fecha (requerido)'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            final d = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (d != null) setState(() => pickedDate = d);
-                          },
-                          child: const Text('Seleccionar'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(pickedTime?.format(context) ?? 'Hora (opcional)'),
-                        ),
-                        TextButton(
-                          onPressed: () async {
-                            final t = await showTimePicker(
-                              context: context,
-                              initialTime: TimeOfDay.now(),
-                            );
-                            if (t != null) setState(() => pickedTime = t);
-                          },
-                          child: const Text('Seleccionar'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+  Future<void> _editActivity(ActivityTrack activity) async {
+    final data = await showActivityFormDialog(context, initial: activity, isEdit: true);
+    if (data == null || !mounted) return;
+    await saveActivityForm(context, existing: activity, data: data, onSaved: _loadActivities);
+  }
+
+  Future<void> _toggleArchive(ActivityTrack activity) async {
+    try {
+      if (activity.isArchived) {
+        await AttendanceService.unarchiveActivityTrack(activity.id);
+        if (mounted) showAppSnackBar(context, 'Actividad restaurada');
+      } else {
+        await AttendanceService.archiveActivityTrack(activity.id);
+        if (mounted) showAppSnackBar(context, 'Actividad archivada');
+      }
+      await _loadActivities();
+    } catch (e) {
+      if (mounted) handleApiError(context, e);
+    }
+  }
+
+  Future<void> _showParkingLink(ActivityTrack activity) async {
+    try {
+      final link = await AttendanceService.fetchParkingLink(activity.id);
+      if (!mounted) return;
+      final url = parkingPublicUrl(link.token);
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Enlace de estacionamiento'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SelectableText(url),
+              const SizedBox(height: 8),
+              Text(
+                'Expira: ${link.expiresAt}',
+                style: const TextStyle(fontSize: 12, color: AppColors.text),
               ),
-            );
-          }),
+            ],
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                if (pickedDate == null) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event date is required')));
-                  return;
-                }
-
-                final eventDate = pickedDate!.toIso8601String().split('T').first;
-                final eventTime = pickedTime == null ? null : '${pickedTime!.hour.toString().padLeft(2,'0')}:${pickedTime!.minute.toString().padLeft(2,'0')}';
-
-                try {
-                  final messenger = ScaffoldMessenger.of(context);
-                  Navigator.of(ctx).pop();
-                  await AttendanceService.createActivityTrack(
-                    name: nameCtrl.text.trim(),
-                    eventDate: eventDate,
-                    description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-                    eventTime: eventTime,
-                  );
-                  await _loadActivities();
-                  if (!mounted) return;
-                  messenger.showSnackBar(const SnackBar(content: Text('Activity created')));
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to create activity: $e')));
-                }
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: url));
+                Navigator.of(ctx).pop();
+                showAppSnackBar(context, 'Enlace copiado');
               },
-              child: const Text('Crear'),
+              child: const Text('Copiar'),
             ),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cerrar')),
           ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) handleApiError(context, e);
+    }
+  }
+
+  void _showActivityActions(ActivityTrack activity) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Editar'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _editActivity(activity);
+                },
+              ),
+              if (activity.isParking)
+                ListTile(
+                  leading: const Icon(Icons.link),
+                  title: const Text('Enlace de estacionamiento'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showParkingLink(activity);
+                  },
+                ),
+              ListTile(
+                leading: Icon(activity.isArchived ? Icons.unarchive : Icons.archive_outlined),
+                title: Text(activity.isArchived ? 'Restaurar' : 'Archivar'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _toggleArchive(activity);
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -151,180 +164,153 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFF5F7FB);
-    const cardColor = Colors.white;
-    const headingColor = Color(0xFF0F172A);
-    const textColor = Color(0xFF475569);
-    const borderColor = Color(0xFFE2E8F0);
-    const accentColor = Color(0xFF12A56B);
-    const accentSoft = Color(0xFFE7FBF2);
-
-    Widget sectionCard({required Widget child}) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0F0F172A),
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: child,
-      );
-    }
-
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateActivityDialog,
+        onPressed: _createActivity,
         child: const Icon(Icons.add),
       ),
       body: SafeArea(
         child: RefreshIndicator(
-          color: accentColor,
+          color: AppColors.accent,
           onRefresh: _loadActivities,
-          child: _loading
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 180),
-                    Center(child: CircularProgressIndicator()),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              SectionCard(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionHeader(
+                      icon: Icons.list_alt_rounded,
+                      title: 'Actividades',
+                      subtitle: 'Gestiona eventos, estacionamiento y archivado.',
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _searchCtrl,
+                      decoration: appFieldDecoration(hintText: 'Buscar actividad...').copyWith(
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.search),
+                          onPressed: _loadActivities,
+                        ),
+                      ),
+                      onSubmitted: (_) => _loadActivities(),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Mostrar archivadas'),
+                      value: _showArchived,
+                      onChanged: (v) {
+                        setState(() => _showArchived = v);
+                        _loadActivities();
+                      },
+                    ),
                   ],
+                ),
+              ),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: CircularProgressIndicator()),
                 )
-              : _error != null
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        sectionCard(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ),
-                      ],
-                    )
-                  : _activities.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            sectionCard(
-                              child: const Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.event_note_rounded,
-                                      size: 56,
-                                      color: Color(0xFFCBD5E1),
-                                    ),
-                                    SizedBox(height: 14),
-                                    Text(
-                                      'No activities available.',
-                                      style: TextStyle(
-                                        color: headingColor,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 6),
-                                    Text(
-                                      'Pull to refresh and try again.',
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            sectionCard(
-                              child: const Padding(
-                                padding: EdgeInsets.all(18),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.list_alt_rounded,
-                                      color: accentColor,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Actividades',
-                                      style: TextStyle(
-                                        color: headingColor,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            ..._activities.map(
-                              (activity) => Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: cardColor,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(color: borderColor),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x0F0F172A),
-                                      blurRadius: 18,
-                                      offset: Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                  title: Text(
-                                    activity.name,
-                                    style: const TextStyle(
-                                      color: headingColor,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    '${activity.eventDate ?? 'Date unknown'} • ${activity.location ?? 'Location not set'}',
-                                    style: const TextStyle(color: textColor),
-                                  ),
-                                  trailing: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: accentSoft,
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      activity.status?.toUpperCase() ?? 'UNKNOWN',
-                                      style: const TextStyle(
-                                        color: accentColor,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+              else if (_error != null)
+                SectionCard(
+                  padding: const EdgeInsets.all(16),
+                  child: StatusBanner(message: _error!, isError: true),
+                )
+              else if (_activities.isEmpty)
+                SectionCard(
+                  child: AppEmptyState(
+                    icon: Icons.event_note_rounded,
+                    title: 'No hay actividades',
+                    description: 'Crea una actividad o ajusta los filtros.',
+                  ),
+                )
+              else
+                ..._activities.map((activity) => _ActivityTile(
+                      activity: activity,
+                      onTap: () => _showActivityActions(activity),
+                    )),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _ActivityTile extends StatelessWidget {
+  final ActivityTrack activity;
+  final VoidCallback onTap;
+
+  const _ActivityTile({required this.activity, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <Widget>[
+      _chip(activity.status?.toUpperCase() ?? 'ACTIVA', AppColors.accentSoft, AppColors.accent),
+      if (activity.isParking) _chip('ESTACIONAMIENTO', const Color(0xFFE0F2FE), const Color(0xFF0369A1)),
+      if (activity.isScanning) _chip('ESCANEANDO', AppColors.successSoft, AppColors.successText),
+      if (activity.isArchived) _chip('ARCHIVADA', const Color(0xFFF1F5F9), AppColors.text),
+    ];
+
+    return SectionCard(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      activity.name,
+                      style: const TextStyle(
+                        color: AppColors.heading,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.more_horiz, color: AppColors.text),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${activity.eventDate ?? 'Sin fecha'}${activity.eventTime != null ? ' · ${activity.eventTime}' : ''}${activity.location != null ? ' · ${activity.location}' : ''}',
+                style: const TextStyle(color: AppColors.text, fontSize: 13),
+              ),
+              if (activity.totalAttendance != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${activity.totalAttendance} asistencias · ${activity.beneficiariosCount ?? 0} benef. · ${activity.guestsCount ?? 0} invitados',
+                  style: const TextStyle(color: AppColors.text, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 10),
+              Wrap(spacing: 6, runSpacing: 6, children: chips),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String label, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        label,
+        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
