@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../config.dart';
 import '../services/auth_service.dart';
+import '../utils/api_error.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,8 +37,10 @@ class _LoginScreenState extends State<LoginScreen> {
       }, auth: false);
 
       if (resp.statusCode != 200) {
-        final msg = resp.body.isNotEmpty ? resp.body : 'Login failed';
-        setState(() { _error = msg; _loading = false; });
+        setState(() {
+          _error = parseApiException(resp, fallback: 'Credenciales inválidas').message;
+          _loading = false;
+        });
         return;
       }
 
@@ -45,6 +48,22 @@ class _LoginScreenState extends State<LoginScreen> {
       final token = data['token'] as String?;
       if (token == null) {
         setState(() { _error = 'Invalid server response'; _loading = false; });
+        return;
+      }
+
+      final rolesData = data['user']?['roles'] ?? data['roles'];
+      final List<String> roles = [];
+      if (rolesData is String) {
+        roles.add(rolesData);
+      } else if (rolesData is Iterable) {
+        roles.addAll(rolesData.whereType<String>());
+      }
+
+      if (!roles.contains('admin')) {
+        setState(() {
+          _error = 'Acceso restringido: solo usuarios con rol administrador pueden ingresar.';
+          _loading = false;
+        });
         return;
       }
 
