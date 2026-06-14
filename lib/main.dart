@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
+import 'services/session_service.dart';
 import 'theme/app_theme.dart';
 import 'widgets/asoniped_nav_bar.dart';
 
@@ -20,7 +21,10 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (ctx) => const _SplashGate(),
-        '/login': (ctx) => const LoginScreen(),
+        '/login': (ctx) {
+          final message = ModalRoute.of(ctx)?.settings.arguments as String?;
+          return LoginScreen(sessionMessage: message);
+        },
         '/home': (ctx) => const HomeScreen(),
       },
     );
@@ -42,9 +46,20 @@ class _SplashGateState extends State<_SplashGate> {
   }
 
   Future<void> _checkSession() async {
-    final token = await AuthService.getToken();
+    final status = await resolveSession();
     if (!mounted) return;
-    Navigator.of(context).pushReplacementNamed(token != null ? '/home' : '/login');
+
+    switch (status) {
+      case SessionStatus.valid:
+        Navigator.of(context).pushReplacementNamed('/home');
+      case SessionStatus.expired:
+        Navigator.of(context).pushReplacementNamed(
+          '/login',
+          arguments: AuthService.sessionExpiredMessage,
+        );
+      case SessionStatus.none:
+        Navigator.of(context).pushReplacementNamed('/login');
+    }
   }
 
   @override

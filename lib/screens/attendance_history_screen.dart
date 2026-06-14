@@ -54,8 +54,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       setState(() => _activities = result.items.where((a) => !a.isArchived).toList());
       await _loadRecords();
     } catch (e) {
-      setState(() => _error = e.toString());
-      if (mounted) handleApiError(context, e);
+      if (mounted) {
+        final handled = await handleApiError(context, e);
+        if (!handled) setState(() => _error = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -92,8 +94,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
         });
       }
     } catch (e) {
-      setState(() => _error = e.toString());
-      if (mounted) handleApiError(context, e);
+      if (mounted) {
+        final handled = await handleApiError(context, e);
+        if (!handled) setState(() => _error = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

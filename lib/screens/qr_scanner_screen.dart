@@ -9,6 +9,7 @@ import '../models/activity_track.dart';
 import '../models/attendance_record.dart';
 import '../services/attendance_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/api_error.dart';
 import '../utils/ui_helpers.dart';
 import '../widgets/app_widgets.dart';
 
@@ -205,9 +206,14 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         _sessionRecords = [record, ..._sessionRecords.where((r) => r.id != record.id)];
       });
       _setStatus('Asistencia registrada: ${record.fullName}.');
+    } on ApiException catch (e) {
+      if (mounted) {
+        final handled = await handleApiError(context, e);
+        if (!handled) _setStatus(e.message, isError: true);
+      }
     } catch (e) {
       _setStatus(e.toString(), isError: true);
-      if (mounted) handleApiError(context, e);
+      if (mounted) await handleApiError(context, e);
     } finally {
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) setState(() => _scanned = false);

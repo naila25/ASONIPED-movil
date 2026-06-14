@@ -47,8 +47,10 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
       );
       setState(() => _activities = result.items);
     } catch (e) {
-      setState(() => _error = e.toString());
-      if (mounted) handleApiError(context, e);
+      if (mounted) {
+        final handled = await handleApiError(context, e);
+        if (!handled) setState(() => _error = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }

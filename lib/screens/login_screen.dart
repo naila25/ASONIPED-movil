@@ -7,7 +7,9 @@ import '../utils/api_error.dart';
 import '../widgets/asoniped_nav_bar.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? sessionMessage;
+
+  const LoginScreen({super.key, this.sessionMessage});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -19,6 +21,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _error = widget.sessionMessage;
+  }
 
   @override
   void dispose() {
