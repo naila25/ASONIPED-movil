@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../widgets/asoniped_nav_bar.dart';
 import 'activity_list_screen.dart';
 import 'attendance_history_screen.dart';
 import 'guest_attendance_screen.dart';
@@ -39,15 +40,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_selectedIndex]),
-        actions: [
-          IconButton(
-            tooltip: 'Cerrar sesión',
-            onPressed: () => _logout(context),
-            icon: const Icon(Icons.logout),
-          ),
-        ],
+      appBar: AsonipedAppBar(
+        sectionTitle: _titles[_selectedIndex],
+        onLogout: () => _logout(context),
       ),
       body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: NavigationBar(

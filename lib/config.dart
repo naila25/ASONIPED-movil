@@ -2,7 +2,8 @@
 const String apiBaseUrl = 'https://asoniped-backend-production.up.railway.app';
 
 /// Public web app URL used to build parking links (/estacionamiento/:token).
-const String webAppBaseUrl = 'https://asoniped.vercel.app';
+/// Must match the production frontend origin (same as web: window.location.origin).
+const String webAppBaseUrl = 'https://asoniped.org';
 
 String apiUrl(String path) {
   if (path.startsWith('http')) return path;

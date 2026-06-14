@@ -6,6 +6,7 @@ import '../services/attendance_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/ui_helpers.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/parking_share_panel.dart';
 
 class GuestAttendanceScreen extends StatefulWidget {
   const GuestAttendanceScreen({super.key});
@@ -45,6 +46,13 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     super.dispose();
   }
 
+  void _clearFormFields() {
+    _fullNameController.clear();
+    _cedulaController.clear();
+    _phoneController.clear();
+    _plateController.clear();
+  }
+
   Future<void> _loadActivities() async {
     try {
       final result = await AttendanceService.fetchActivityTracks(limit: 100);
@@ -52,6 +60,28 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     } catch (e) {
       _setMessage('No se pudieron cargar actividades: $e', isError: true);
       if (mounted) handleApiError(context, e);
+    }
+  }
+
+  Future<void> _selectActivity(ActivityTrack activity) async {
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+    try {
+      final fresh = await AttendanceService.fetchActivityById(activity.id);
+      final resolved = fresh ?? activity;
+      if (!mounted) return;
+      setState(() {
+        _selectedActivity = resolved;
+      });
+      _clearFormFields();
+      _formKey.currentState?.reset();
+      await _loadRecordsForActivity();
+    } catch (e) {
+      if (mounted) handleApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -87,28 +117,10 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     });
   }
 
-  String? _validateForm() {
-    if (_parkingMode) {
-      final plate = _plateController.text.trim();
-      if (plate.length < 2) return 'La placa es obligatoria (mín. 2 caracteres).';
-      if (!RegExp(r'^[A-Za-z0-9\s-]+$').hasMatch(plate)) {
-        return 'Placa inválida: solo letras, números, espacios y guiones.';
-      }
-    } else if (_fullNameController.text.trim().isEmpty) {
-      return 'El nombre completo es obligatorio.';
-    }
-    return null;
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedActivity == null) {
       _setMessage('Selecciona una actividad primero.', isError: true);
-      return;
-    }
-    final validation = _validateForm();
-    if (validation != null) {
-      _setMessage(validation, isError: true);
       return;
     }
 
@@ -124,7 +136,6 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
           plate: _plateController.text.trim(),
           fullName: _fullNameController.text.trim().isEmpty ? null : _fullNameController.text.trim(),
           cedula: _cedulaController.text.trim().isEmpty ? null : _cedulaController.text.trim(),
-          phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
         );
         _setMessage('Vehículo registrado correctamente.');
       } else {
@@ -137,10 +148,8 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
         _setMessage('Asistencia registrada para ${record.fullName}.');
       }
 
-      _fullNameController.clear();
-      _cedulaController.clear();
-      _phoneController.clear();
-      _plateController.clear();
+      _clearFormFields();
+      _formKey.currentState?.reset();
       await _loadRecordsForActivity();
     } catch (e) {
       _setMessage(e.toString(), isError: true);
@@ -154,13 +163,152 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
     final chosen = await showActivityPickerSheet<ActivityTrack>(
       context,
       activities: _activities,
-      label: (a) => a.isParking ? '${a.name} (Estacionamiento)' : a.name,
+      label: (a) => a.isParking ? '${a.name} · Estacionamiento' : a.name,
       selected: _selectedActivity,
     );
     if (chosen != null && mounted) {
-      setState(() => _selectedActivity = chosen);
-      await _loadRecordsForActivity();
+      await _selectActivity(chosen);
     }
+  }
+
+  Widget _buildRegistrationForm() {
+    if (_selectedActivity == null) {
+      return SectionCard(
+        child: AppEmptyState(
+          icon: Icons.touch_app_outlined,
+          title: 'Selecciona una actividad',
+          description: 'El formulario cambiará según sea estacionamiento o registro de invitados.',
+        ),
+      );
+    }
+
+    return SectionCard(
+      padding: const EdgeInsets.all(18),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _parkingMode ? 'Registro de vehículo' : 'Registro de invitado',
+                    style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
+                  ),
+                ),
+                if (_parkingMode)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.parkingSoft,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: const Text(
+                      'Parking',
+                      style: TextStyle(
+                        color: AppColors.parking,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_parkingMode) ...[
+              TextFormField(
+                key: const ValueKey('parking-plate'),
+                controller: _plateController,
+                decoration: appFieldDecoration(
+                  labelText: 'Placa del vehículo *',
+                  hintText: 'Ej: ABC123',
+                ),
+                textCapitalization: TextCapitalization.characters,
+                validator: (v) {
+                  if (v == null || v.trim().length < 2) return 'La placa es obligatoria';
+                  if (!RegExp(r'^[A-Za-z0-9\s-]+$').hasMatch(v.trim())) {
+                    return 'Solo letras, números, espacios y guiones';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('parking-name'),
+                controller: _fullNameController,
+                decoration: appFieldDecoration(
+                  labelText: 'Nombre completo (opcional)',
+                  hintText: 'Ej: Juan Pérez',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('parking-cedula'),
+                controller: _cedulaController,
+                decoration: appFieldDecoration(
+                  labelText: 'Cédula (opcional)',
+                  hintText: 'Solo números',
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ] else ...[
+              TextFormField(
+                key: const ValueKey('guest-name'),
+                controller: _fullNameController,
+                decoration: appFieldDecoration(
+                  labelText: 'Nombre completo *',
+                  hintText: 'Ej: Juan Pérez',
+                ),
+                validator: (v) => v == null || v.trim().isEmpty ? 'Nombre requerido' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('guest-cedula'),
+                controller: _cedulaController,
+                decoration: appFieldDecoration(
+                  labelText: 'Cédula (opcional)',
+                  hintText: 'Solo números',
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('guest-phone'),
+                controller: _phoneController,
+                decoration: appFieldDecoration(
+                  labelText: 'Teléfono (opcional)',
+                  hintText: 'Ej: 5551234',
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+            ],
+            const SizedBox(height: 16),
+            if (_message != null) ...[
+              StatusBanner(message: _message!, isError: _messageIsError),
+              const SizedBox(height: 16),
+            ],
+            SizedBox(
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _submit,
+                style: appPrimaryButtonStyle(
+                  color: _parkingMode ? AppColors.parking : AppColors.accent,
+                ),
+                child: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                      )
+                    : Text(_parkingMode ? 'Guardar registro' : 'Registrar asistencia'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -177,7 +325,7 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                 icon: _parkingMode ? Icons.local_parking_rounded : Icons.groups_rounded,
                 title: _parkingMode ? 'Estacionamiento' : 'Registro manual',
                 subtitle: _parkingMode
-                    ? 'Registra vehículos para actividades con estacionamiento habilitado.'
+                    ? 'Comparte el QR/enlace o registra vehículos manualmente.'
                     : 'Registra invitados para la actividad seleccionada.',
               ),
             ),
@@ -188,131 +336,79 @@ class _GuestAttendanceScreenState extends State<GuestAttendanceScreen> {
                 children: [
                   const Text('Actividad', style: TextStyle(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 10),
-                  ElevatedButton(
+                  OutlinedButton.icon(
                     onPressed: _activities.isEmpty ? null : _pickActivity,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    child: Text(_selectedActivity?.name ?? 'Seleccionar actividad'),
+                    icon: const Icon(Icons.event),
+                    label: Text(_selectedActivity?.name ?? 'Seleccionar actividad'),
                   ),
                 ],
               ),
             ),
-            SectionCard(
-              padding: const EdgeInsets.all(18),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_parkingMode) ...[
-                      TextFormField(
-                        controller: _plateController,
-                        decoration: appFieldDecoration(hintText: 'Placa *'),
-                        textCapitalization: TextCapitalization.characters,
-                        validator: (v) => (v == null || v.trim().length < 2) ? 'Placa requerida' : null,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    TextFormField(
-                      controller: _fullNameController,
-                      decoration: appFieldDecoration(
-                        hintText: _parkingMode ? 'Nombre (opcional)' : 'Nombre completo *',
-                      ),
-                      validator: _parkingMode
-                          ? null
-                          : (v) => v == null || v.trim().isEmpty ? 'Nombre requerido' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _cedulaController,
-                      decoration: appFieldDecoration(hintText: 'Cédula (opcional)'),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phoneController,
-                      decoration: appFieldDecoration(hintText: 'Teléfono (opcional)'),
-                      keyboardType: TextInputType.phone,
-                    ),
-                    const SizedBox(height: 16),
-                    if (_message != null) ...[
-                      StatusBanner(message: _message!, isError: _messageIsError),
-                      const SizedBox(height: 16),
-                    ],
-                    SizedBox(
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _loading || _selectedActivity == null ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          foregroundColor: Colors.white,
-                        ),
-                        child: _loading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
-                              )
-                            : Text(_parkingMode ? 'Registrar vehículo' : 'Registrar asistencia'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_selectedActivity != null) ...[
+            if (_parkingMode && _selectedActivity != null)
               SectionCard(
                 padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _parkingMode ? 'Vehículos registrados' : 'Invitados registrados',
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
-                    ),
-                    const SizedBox(height: 10),
-                    if (_loading)
-                      const Center(child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(),
-                      ))
-                    else if (_parkingMode && _parkingRecords.isEmpty)
-                      const AppEmptyState(
-                        icon: Icons.local_parking_outlined,
-                        title: 'Sin vehículos',
-                        description: 'Los registros de estacionamiento aparecerán aquí.',
-                      )
-                    else if (!_parkingMode && _attendanceRecords.isEmpty)
-                      const AppEmptyState(
-                        icon: Icons.person_outline,
-                        title: 'Sin invitados',
-                        description: 'Los registros manuales aparecerán aquí.',
-                      )
-                    else if (_parkingMode)
-                      ..._parkingRecords.map(
-                        (r) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(r.plateRaw, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text(
-                            [r.fullName, r.cedula, r.phone].where((e) => e != null && e.isNotEmpty).join(' · '),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._attendanceRecords.map(
-                        (r) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(r.fullName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          subtitle: Text('${r.typeLabel} · ${r.createdAt ?? ''}'),
-                        ),
-                      ),
-                  ],
+                child: CollapsibleParkingShareSection(
+                  key: ValueKey('share-${_selectedActivity!.id}'),
+                  activityId: _selectedActivity!.id,
+                  activityName: _selectedActivity!.name,
                 ),
               ),
-            ],
+            _buildRegistrationForm(),
+            if (_selectedActivity != null)
+              PaginatedListPanel(
+                title: _parkingMode ? 'Vehículos registrados' : 'Invitados registrados',
+                totalCount: _parkingMode ? _parkingRecords.length : _attendanceRecords.length,
+                items: _loading
+                    ? [const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))]
+                    : _parkingMode
+                        ? _parkingRecords.isEmpty
+                            ? [
+                                const AppEmptyState(
+                                  icon: Icons.local_parking_outlined,
+                                  title: 'Sin vehículos',
+                                  description: 'Los registros aparecerán aquí.',
+                                ),
+                              ]
+                            : _parkingRecords
+                                .map(
+                                  (r) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: CircleAvatar(
+                                      backgroundColor: AppColors.parkingSoft,
+                                      child: const Icon(Icons.directions_car, color: AppColors.parking, size: 18),
+                                    ),
+                                    title: Text(r.plateRaw, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    subtitle: Text(
+                                      [r.fullName, r.cedula != null ? 'ID ${r.cedula}' : null]
+                                          .whereType<String>()
+                                          .where((e) => e.isNotEmpty)
+                                          .join(' · '),
+                                    ),
+                                  ),
+                                )
+                                .toList()
+                        : _attendanceRecords.isEmpty
+                            ? [
+                                const AppEmptyState(
+                                  icon: Icons.person_outline,
+                                  title: 'Sin invitados',
+                                  description: 'Los registros manuales aparecerán aquí.',
+                                ),
+                              ]
+                            : _attendanceRecords
+                                .map(
+                                  (r) => ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: CircleAvatar(
+                                      backgroundColor: AppColors.accentSoft,
+                                      child: const Icon(Icons.person_outline, color: AppColors.accent, size: 18),
+                                    ),
+                                    title: Text(r.fullName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                                    subtitle: Text('${r.typeLabel} · ${r.createdAt ?? ''}'),
+                                  ),
+                                )
+                                .toList(),
+              ),
           ],
         ),
       ),

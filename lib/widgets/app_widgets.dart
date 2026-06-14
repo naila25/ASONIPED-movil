@@ -169,8 +169,12 @@ class AppEmptyState extends StatelessWidget {
   }
 }
 
-InputDecoration appFieldDecoration({required String hintText}) {
+InputDecoration appFieldDecoration({
+  required String hintText,
+  String? labelText,
+}) {
   return InputDecoration(
+    labelText: labelText,
     hintText: hintText,
     hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
     filled: true,
@@ -193,6 +197,118 @@ InputDecoration appFieldDecoration({required String hintText}) {
       borderSide: const BorderSide(color: Colors.redAccent, width: 1.4),
     ),
   );
+}
+
+class PaginatedListPanel extends StatefulWidget {
+  final String title;
+  final int totalCount;
+  final List<Widget> items;
+  final int pageSize;
+
+  const PaginatedListPanel({
+    super.key,
+    required this.title,
+    required this.totalCount,
+    required this.items,
+    this.pageSize = 12,
+  });
+
+  @override
+  State<PaginatedListPanel> createState() => _PaginatedListPanelState();
+}
+
+class _PaginatedListPanelState extends State<PaginatedListPanel> {
+  int _page = 0;
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(covariant PaginatedListPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.totalCount != widget.totalCount || oldWidget.items.length != widget.items.length) {
+      _page = 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.totalCount == 0) return const SizedBox.shrink();
+
+    final totalPages = (widget.items.length / widget.pageSize).ceil().clamp(1, 9999);
+    final start = _page * widget.pageSize;
+    final end = (start + widget.pageSize).clamp(0, widget.items.length);
+    final pageItems = widget.items.sublist(start, end);
+
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.heading,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${widget.totalCount} registro${widget.totalCount == 1 ? '' : 's'}',
+                          style: const TextStyle(color: AppColors.text, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: AppColors.text),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(children: pageItems),
+            ),
+            if (totalPages > 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Página ${_page + 1} de $totalPages',
+                      style: const TextStyle(fontSize: 12, color: AppColors.text),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: _page > 0 ? () => setState(() => _page--) : null,
+                          icon: const Icon(Icons.chevron_left),
+                        ),
+                        IconButton(
+                          onPressed: _page < totalPages - 1 ? () => setState(() => _page++) : null,
+                          icon: const Icon(Icons.chevron_right),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 Future<T?> showActivityPickerSheet<T extends Object>(

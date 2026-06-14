@@ -62,8 +62,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       final nonParking = result.items.where((a) => !a.isParking && !a.isArchived).toList();
       setState(() {
         _activities = nonParking;
-        if (_selectedActivity == null && nonParking.isNotEmpty) {
-          _selectedActivity = nonParking.first;
+        final current = _selectedActivity;
+        if (current == null || current.isParking || !nonParking.any((a) => a.id == current.id)) {
+          _selectedActivity = nonParking.isNotEmpty ? nonParking.first : null;
         }
       });
     } catch (e) {
@@ -75,15 +76,16 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
   Future<void> _syncScanningState() async {
     try {
       final activeTrack = await AttendanceService.fetchActiveScanningTrack();
+      final validTrack = activeTrack != null && !activeTrack.isParking ? activeTrack : null;
       setState(() {
-        _activeScanningTrack = activeTrack;
-        _isScanning = activeTrack != null;
-        if (activeTrack != null) {
-          _selectedActivity = activeTrack;
+        _activeScanningTrack = validTrack;
+        _isScanning = validTrack != null;
+        if (validTrack != null) {
+          _selectedActivity = validTrack;
         }
       });
-      if (activeTrack != null) {
-        await _loadSessionRecords(activeTrack.id);
+      if (validTrack != null) {
+        await _loadSessionRecords(validTrack.id);
         _startAutoRefresh();
       } else {
         _stopAutoRefresh();
@@ -212,11 +214,6 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
-  int get _beneficiariosCount =>
-      _sessionRecords.where((r) => r.attendanceType == 'beneficiario').length;
-
-  int get _guestsCount => _sessionRecords.where((r) => r.attendanceType == 'guest').length;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -234,9 +231,19 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                 child: const SectionHeader(
                   icon: Icons.qr_code_scanner_rounded,
                   title: 'Escanear QR',
-                  subtitle: 'Inicia la sesión, escanea beneficiarios y revisa resultados en vivo.',
+                  subtitle: 'Solo actividades sin estacionamiento. Escanea beneficiarios con QR de expediente.',
                 ),
               ),
+              if (_activities.isEmpty)
+                SectionCard(
+                  child: AppEmptyState(
+                    icon: Icons.qr_code_scanner_outlined,
+                    title: 'No hay actividades para escanear',
+                    description:
+                        'Las actividades con estacionamiento no aparecen aquí. Crea o selecciona una actividad sin parking.',
+                  ),
+                )
+              else ...[
               SectionCard(
                 padding: const EdgeInsets.all(18),
                 child: Column(
@@ -248,25 +255,19 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                     ),
                     const SizedBox(height: 10),
                     ElevatedButton(
-                      onPressed: _activities.isEmpty
-                          ? null
-                          : () async {
-                              final chosen = await showActivityPickerSheet<ActivityTrack>(
-                                context,
-                                activities: _activities,
-                                label: (a) => a.name,
-                                selected: _selectedActivity,
-                              );
-                              if (chosen != null && mounted) {
-                                setState(() => _selectedActivity = chosen);
-                              }
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
+                      onPressed: () async {
+                        final chosen = await showActivityPickerSheet<ActivityTrack>(
+                          context,
+                          activities: _activities,
+                          label: (a) => a.name,
+                          selected: _selectedActivity,
+                          filter: (a) => !a.isParking,
+                        );
+                        if (chosen != null && mounted) {
+                          setState(() => _selectedActivity = chosen);
+                        }
+                      },
+                      style: appPrimaryButtonStyle(),
                       child: Text(_selectedActivity?.name ?? 'Seleccionar actividad'),
                     ),
                     const SizedBox(height: 14),
@@ -335,52 +336,38 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
                   ),
                 ),
               ),
-              if (_selectedActivity != null) ...[
-                SectionCard(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Asistencias en vivo',
-                            style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
+              if (_selectedActivity != null)
+                PaginatedListPanel(
+                  title: 'Asistencias en vivo',
+                  totalCount: _sessionRecords.length,
+                  pageSize: 10,
+                  items: _sessionRecords.isEmpty
+                      ? [
+                          const AppEmptyState(
+                            icon: Icons.people_outline,
+                            title: 'Sin registros aún',
+                            description: 'Los escaneos válidos aparecerán aquí.',
                           ),
-                          Text(
-                            '$_beneficiariosCount benef. · $_guestsCount invitados',
-                            style: const TextStyle(fontSize: 12, color: AppColors.text),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (_sessionRecords.isEmpty)
-                        const AppEmptyState(
-                          icon: Icons.people_outline,
-                          title: 'Sin registros aún',
-                          description: 'Los escaneos válidos aparecerán aquí automáticamente.',
-                        )
-                      else
-                        ..._sessionRecords.take(20).map(
-                              (record) => ListTile(
-                                contentPadding: EdgeInsets.zero,
-                                leading: CircleAvatar(
-                                  backgroundColor: AppColors.accentSoft,
-                                  child: Icon(
-                                    record.attendanceType == 'beneficiario'
-                                        ? Icons.badge_outlined
-                                        : Icons.person_outline,
-                                    color: AppColors.accent,
-                                    size: 20,
-                                  ),
+                        ]
+                      : _sessionRecords
+                          .map(
+                            (record) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: CircleAvatar(
+                                backgroundColor: AppColors.accentSoft,
+                                child: Icon(
+                                  record.attendanceType == 'beneficiario'
+                                      ? Icons.badge_outlined
+                                      : Icons.person_outline,
+                                  color: AppColors.accent,
+                                  size: 20,
                                 ),
-                                title: Text(record.fullName),
-                                subtitle: Text('${record.typeLabel} · ${record.methodLabel}'),
                               ),
+                              title: Text(record.fullName),
+                              subtitle: Text('${record.typeLabel} · ${record.methodLabel}'),
                             ),
-                    ],
-                  ),
+                          )
+                          .toList(),
                 ),
               ],
             ],

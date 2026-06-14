@@ -41,6 +41,16 @@ class ActivityTrack {
   bool get isParking => parkingEnabled == true;
   bool get isScanning => scanningActive == true;
 
+  static bool? _parseBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    final normalized = value.toString().trim().toLowerCase();
+    if (normalized == 'true' || normalized == '1') return true;
+    if (normalized == 'false' || normalized == '0') return false;
+    return null;
+  }
+
   ActivityTrack copyWith({
     int? id,
     String? name,
@@ -89,14 +99,13 @@ class ActivityTrack {
       eventTime: json['event_time']?.toString(),
       location: json['location']?.toString(),
       status: json['status']?.toString(),
-      scanningActive: json['scanning_active'] == true || json['scanning_active']?.toString() == 'true',
-      parkingEnabled: json['parking_enabled'] == true || json['parking_enabled']?.toString() == 'true',
-      repeatAttendanceEnabled: json['repeat_attendance_enabled'] == true ||
-          json['repeat_attendance_enabled']?.toString() == 'true',
+      scanningActive: _parseBool(json['scanning_active']) ?? false,
+      parkingEnabled: _parseBool(json['parking_enabled']) ?? false,
+      repeatAttendanceEnabled: _parseBool(json['repeat_attendance_enabled']) ?? false,
       repeatAttendanceCooldownHours: json['repeat_attendance_cooldown_hours'] is int
           ? json['repeat_attendance_cooldown_hours']
           : int.tryParse(json['repeat_attendance_cooldown_hours']?.toString() ?? ''),
-      archived: json['archived'] == true || json['archived']?.toString() == '1',
+      archived: _parseBool(json['archived']) ?? false,
       totalAttendance: json['total_attendance'] is int
           ? json['total_attendance']
           : int.tryParse(json['total_attendance']?.toString() ?? ''),

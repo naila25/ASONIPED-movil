@@ -4,6 +4,7 @@ import '../services/api_service.dart';
 import '../config.dart';
 import '../services/auth_service.dart';
 import '../utils/api_error.dart';
+import '../widgets/asoniped_nav_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -107,37 +108,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: SizedBox(
-          width: double.infinity,
-          height: double.infinity,
-          child: Column(
-            children: [
-              Container(
+      body: Column(
+        children: [
+          const SafeArea(
+            bottom: false,
+            child: AsonipedNavBar(showUserMenu: false),
+          ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                color: const Color(0xFF0A55D6),
-                child: const Row(
-                  children: [
-                    AsonipedLogo(),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Asoniped Digital',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
+                height: double.infinity,
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return SingleChildScrollView(
@@ -370,41 +352,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   },
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class AsonipedLogo extends StatelessWidget {
-  const AsonipedLogo({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipOval(
-      child: Container(
-        width: 54,
-        height: 54,
-        padding: const EdgeInsets.all(4),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 10,
-              offset: Offset(0, 4),
             ),
-          ],
-        ),
-        child: Image.asset(
-          'assets/images/asoniped_logo.png',
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.high,
-          isAntiAlias: true,
-        ),
+          ),
+        ],
       ),
     );
   }

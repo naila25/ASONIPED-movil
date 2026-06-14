@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../config.dart';
 import '../models/activity_track.dart';
 import '../services/attendance_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/ui_helpers.dart';
 import '../widgets/activity_form_dialog.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/parking_share_panel.dart';
 
 class ActivityListScreen extends StatefulWidget {
   const ActivityListScreen({super.key});
@@ -58,7 +57,26 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
   Future<void> _createActivity() async {
     final data = await showActivityFormDialog(context, isEdit: false);
     if (data == null || !mounted) return;
-    await saveActivityForm(context, data: data, onSaved: _loadActivities);
+
+    final createdId = await saveActivityForm(context, data: data, onSaved: _loadActivities);
+    if (!mounted || createdId == null) return;
+
+    await _loadActivities();
+    if (!mounted || !data.parkingEnabled) return;
+
+    ActivityTrack? activity;
+    for (final item in _activities) {
+      if (item.id == createdId) {
+        activity = item;
+        break;
+      }
+    }
+    await showParkingLinkDialog(
+      context,
+      activityId: createdId,
+      activityName: activity?.name ?? data.name,
+      initiallyExpanded: true,
+    );
   }
 
   Future<void> _editActivity(ActivityTrack activity) async {
@@ -83,42 +101,11 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
   }
 
   Future<void> _showParkingLink(ActivityTrack activity) async {
-    try {
-      final link = await AttendanceService.fetchParkingLink(activity.id);
-      if (!mounted) return;
-      final url = parkingPublicUrl(link.token);
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Enlace de estacionamiento'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SelectableText(url),
-              const SizedBox(height: 8),
-              Text(
-                'Expira: ${link.expiresAt}',
-                style: const TextStyle(fontSize: 12, color: AppColors.text),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: url));
-                Navigator.of(ctx).pop();
-                showAppSnackBar(context, 'Enlace copiado');
-              },
-              child: const Text('Copiar'),
-            ),
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cerrar')),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) handleApiError(context, e);
-    }
+    await showParkingLinkDialog(
+      context,
+      activityId: activity.id,
+      activityName: activity.name,
+    );
   }
 
   void _showActivityActions(ActivityTrack activity) {
@@ -140,8 +127,8 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
               ),
               if (activity.isParking)
                 ListTile(
-                  leading: const Icon(Icons.link),
-                  title: const Text('Enlace de estacionamiento'),
+                  leading: const Icon(Icons.qr_code_2_outlined, color: Color(0xFFD97706)),
+                  title: const Text('Ver enlace y QR de estacionamiento'),
                   onTap: () {
                     Navigator.pop(ctx);
                     _showParkingLink(activity);
@@ -230,10 +217,12 @@ class _ActivityListScreenState extends State<ActivityListScreen> {
                   ),
                 )
               else
-                ..._activities.map((activity) => _ActivityTile(
-                      activity: activity,
-                      onTap: () => _showActivityActions(activity),
-                    )),
+                ..._activities.map(
+                  (activity) => _ActivityTile(
+                    activity: activity,
+                    onTap: () => _showActivityActions(activity),
+                  ),
+                ),
             ],
           ),
         ),
@@ -246,7 +235,10 @@ class _ActivityTile extends StatelessWidget {
   final ActivityTrack activity;
   final VoidCallback onTap;
 
-  const _ActivityTile({required this.activity, required this.onTap});
+  const _ActivityTile({
+    required this.activity,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -259,46 +251,61 @@ class _ActivityTile extends StatelessWidget {
 
     return SectionCard(
       margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Text(
-                      activity.name,
-                      style: const TextStyle(
-                        color: AppColors.heading,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 16,
-                      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            activity.name,
+                            style: const TextStyle(
+                              color: AppColors.heading,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ),
+                        const Icon(Icons.more_horiz, color: AppColors.text),
+                      ],
                     ),
-                  ),
-                  const Icon(Icons.more_horiz, color: AppColors.text),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '${activity.eventDate ?? 'Sin fecha'}${activity.eventTime != null ? ' · ${activity.eventTime}' : ''}${activity.location != null ? ' · ${activity.location}' : ''}',
-                style: const TextStyle(color: AppColors.text, fontSize: 13),
-              ),
-              if (activity.totalAttendance != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  '${activity.totalAttendance} asistencias · ${activity.beneficiariosCount ?? 0} benef. · ${activity.guestsCount ?? 0} invitados',
-                  style: const TextStyle(color: AppColors.text, fontSize: 12),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${activity.eventDate ?? 'Sin fecha'}${activity.eventTime != null ? ' · ${activity.eventTime}' : ''}${activity.location != null ? ' · ${activity.location}' : ''}',
+                      style: const TextStyle(color: AppColors.text, fontSize: 13),
+                    ),
+                    if (activity.totalAttendance != null && !activity.isParking) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${activity.totalAttendance} asistencias · ${activity.beneficiariosCount ?? 0} benef. · ${activity.guestsCount ?? 0} invitados',
+                        style: const TextStyle(color: AppColors.text, fontSize: 12),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
+            ),
+            if (activity.isParking) ...[
               const SizedBox(height: 10),
-              Wrap(spacing: 6, runSpacing: 6, children: chips),
+              CollapsibleParkingShareSection(
+                activityId: activity.id,
+                activityName: activity.name,
+              ),
             ],
-          ),
+            const SizedBox(height: 10),
+            Wrap(spacing: 6, runSpacing: 6, children: chips),
+          ],
         ),
       ),
     );

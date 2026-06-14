@@ -6,6 +6,9 @@ import '../services/attendance_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/ui_helpers.dart';
 import '../widgets/app_widgets.dart';
+import '../widgets/attendance_charts.dart';
+
+enum _ReportTab { resumen, registros }
 
 class AttendanceHistoryScreen extends StatefulWidget {
   const AttendanceHistoryScreen({super.key});
@@ -24,6 +27,8 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   AttendanceStats? _stats;
   String? _typeFilter;
   String? _methodFilter;
+  _ReportTab _tab = _ReportTab.resumen;
+  final TextEditingController _searchCtrl = TextEditingController();
 
   bool get _parkingMode => _selectedActivity?.isParking == true;
 
@@ -33,6 +38,12 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
     _bootstrap();
   }
 
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _bootstrap() async {
     setState(() {
       _loading = true;
@@ -40,7 +51,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
     });
     try {
       final result = await AttendanceService.fetchActivityTracks(limit: 100);
-      setState(() => _activities = result.items);
+      setState(() => _activities = result.items.where((a) => !a.isArchived).toList());
       await _loadRecords();
     } catch (e) {
       setState(() => _error = e.toString());
@@ -105,6 +116,9 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                 (a) => ListTile(
                   title: Text(a.name),
                   subtitle: Text(a.isParking ? 'Estacionamiento' : (a.eventDate ?? '')),
+                  trailing: a.isParking
+                      ? const Icon(Icons.local_parking, color: AppColors.parking, size: 18)
+                      : null,
                   onTap: () => Navigator.pop(ctx, a),
                 ),
               ),
@@ -113,8 +127,174 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
         );
       },
     );
-    setState(() => _selectedActivity = chosen);
+    if (!mounted) return;
+    setState(() {
+      _selectedActivity = chosen;
+      _searchCtrl.clear();
+    });
     await _loadRecords();
+  }
+
+  List<AttendanceRecord> get _filteredRecords {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) return _records;
+    return _records.where((r) {
+      return r.fullName.toLowerCase().contains(q) ||
+          (r.cedula?.toLowerCase().contains(q) ?? false) ||
+          (r.activityTrackName?.toLowerCase().contains(q) ?? false);
+    }).toList();
+  }
+
+  List<ParkingRegistration> get _filteredParking {
+    final q = _searchCtrl.text.trim().toLowerCase();
+    if (q.isEmpty) return _parkingRecords;
+    return _parkingRecords.where((r) {
+      return r.plateRaw.toLowerCase().contains(q) ||
+          (r.fullName?.toLowerCase().contains(q) ?? false) ||
+          (r.cedula?.toLowerCase().contains(q) ?? false);
+    }).toList();
+  }
+
+  Widget _buildCharts() {
+    if (_parkingMode) {
+      return AttendanceCharts(
+        isParking: true,
+        parkingTotal: _parkingRecords.length,
+        parkingSourceSlices: buildParkingSourceSlices(_parkingRecords),
+        typeSlices: const [],
+        methodSlices: const [],
+      );
+    }
+
+    final typeSlices = _stats != null
+        ? buildTypeSlicesFromStats(
+            beneficiarios: _stats!.beneficiariosCount,
+            guests: _stats!.guestsCount,
+          )
+        : buildTypeSlicesFromRecords(_records);
+
+    final methodSlices = _stats != null
+        ? buildMethodSlicesFromStats(
+            qrScans: _stats!.qrScansCount,
+            manualEntries: _stats!.manualEntriesCount,
+          )
+        : buildMethodSlicesFromRecords(_records);
+
+    final hasData = typeSlices.any((s) => s.value > 0) || methodSlices.any((s) => s.value > 0);
+    if (!hasData) {
+      return SectionCard(
+        child: AppEmptyState(
+          icon: Icons.bar_chart_outlined,
+          title: 'Sin datos para gráficos',
+          description: 'Selecciona una actividad con registros o ajusta los filtros.',
+        ),
+      );
+    }
+
+    return AttendanceCharts(typeSlices: typeSlices, methodSlices: methodSlices);
+  }
+
+  Widget _buildSummaryTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_stats != null && !_parkingMode)
+          SectionCard(
+            padding: const EdgeInsets.all(18),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _statChip('Total', '${_stats!.totalAttendance}'),
+                _statChip('Benef.', '${_stats!.beneficiariosCount}'),
+                _statChip('Invitados', '${_stats!.guestsCount}'),
+                _statChip('QR', '${_stats!.qrScansCount}'),
+                _statChip('Manual', '${_stats!.manualEntriesCount}'),
+              ],
+            ),
+          ),
+        if (!_parkingMode && _stats == null && _records.isNotEmpty)
+          SectionCard(
+            padding: const EdgeInsets.all(18),
+            child: Text(
+              '${_records.length} registros en el rango actual',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.heading),
+            ),
+          ),
+        if (_parkingMode)
+          SectionCard(
+            padding: const EdgeInsets.all(18),
+            child: Text(
+              '${_parkingRecords.length} vehículo${_parkingRecords.length == 1 ? '' : 's'} registrados',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.heading),
+            ),
+          ),
+        const SizedBox(height: 12),
+        _buildCharts(),
+      ],
+    );
+  }
+
+  Widget _buildRecordsTab() {
+    final items = _parkingMode
+        ? _filteredParking
+            .map(
+              (r) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.parkingSoft,
+                  child: const Icon(Icons.directions_car, color: AppColors.parking, size: 18),
+                ),
+                title: Text(r.plateRaw, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                  [r.fullName, r.cedula, r.createdAt]
+                      .where((e) => e != null && e.isNotEmpty)
+                      .join(' · '),
+                ),
+              ),
+            )
+            .toList()
+        : _filteredRecords
+            .map(
+              (record) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  backgroundColor: AppColors.accentSoft,
+                  child: Icon(
+                    record.attendanceType == 'beneficiario' ? Icons.badge_outlined : Icons.person_outline,
+                    color: AppColors.accent,
+                    size: 20,
+                  ),
+                ),
+                title: Text(record.fullName, style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                  [
+                    record.typeLabel,
+                    record.methodLabel,
+                    if (record.activityTrackName != null) record.activityTrackName,
+                    record.createdAt,
+                  ].whereType<String>().join(' · '),
+                ),
+              ),
+            )
+            .toList();
+
+    if (!_loading && _error == null && items.isEmpty) {
+      return SectionCard(
+        child: AppEmptyState(
+          icon: _parkingMode ? Icons.local_parking_outlined : Icons.history_rounded,
+          title: 'Sin registros',
+          description: 'Prueba otro filtro o término de búsqueda.',
+        ),
+      );
+    }
+
+    return PaginatedListPanel(
+      title: _parkingMode ? 'Detalle de vehículos' : 'Detalle de asistencias',
+      totalCount: items.length,
+      pageSize: 15,
+      items: items,
+    );
   }
 
   @override
@@ -137,63 +317,90 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                     const SectionHeader(
                       icon: Icons.receipt_long_rounded,
                       title: 'Reportes',
-                      subtitle: 'Filtra por actividad, tipo y método de registro.',
+                      subtitle: 'Resumen visual y detalle paginado por actividad.',
                     ),
                     const SizedBox(height: 14),
-                    OutlinedButton(
+                    OutlinedButton.icon(
                       onPressed: _pickActivity,
-                      child: Text(_selectedActivity?.name ?? 'Todas las actividades'),
+                      icon: const Icon(Icons.filter_list),
+                      label: Text(_selectedActivity?.name ?? 'Todas las actividades'),
                     ),
                     if (!_parkingMode) ...[
                       const SizedBox(height: 12),
-                      DropdownButton<String?>(
-                        isExpanded: true,
-                        value: _typeFilter,
-                        hint: const Text('Tipo de asistencia'),
-                        items: const [
-                          DropdownMenuItem(value: null, child: Text('Todos los tipos')),
-                          DropdownMenuItem(value: 'beneficiario', child: Text('Beneficiarios')),
-                          DropdownMenuItem(value: 'guest', child: Text('Invitados')),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          FilterChip(
+                            label: const Text('Todos'),
+                            selected: _typeFilter == null && _methodFilter == null,
+                            onSelected: (_) {
+                              setState(() {
+                                _typeFilter = null;
+                                _methodFilter = null;
+                              });
+                              _loadRecords();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('Beneficiarios'),
+                            selected: _typeFilter == 'beneficiario',
+                            onSelected: (_) {
+                              setState(() => _typeFilter = 'beneficiario');
+                              _loadRecords();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('Invitados'),
+                            selected: _typeFilter == 'guest',
+                            onSelected: (_) {
+                              setState(() => _typeFilter = 'guest');
+                              _loadRecords();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('QR'),
+                            selected: _methodFilter == 'qr_scan',
+                            onSelected: (_) {
+                              setState(() => _methodFilter = 'qr_scan');
+                              _loadRecords();
+                            },
+                          ),
+                          FilterChip(
+                            label: const Text('Manual'),
+                            selected: _methodFilter == 'manual_form',
+                            onSelected: (_) {
+                              setState(() => _methodFilter = 'manual_form');
+                              _loadRecords();
+                            },
+                          ),
                         ],
-                        onChanged: (v) {
-                          setState(() => _typeFilter = v);
-                          _loadRecords();
-                        },
                       ),
-                      const SizedBox(height: 10),
-                      DropdownButton<String?>(
-                        isExpanded: true,
-                        value: _methodFilter,
-                        hint: const Text('Método de registro'),
-                        items: const [
-                          DropdownMenuItem(value: null, child: Text('Todos los métodos')),
-                          DropdownMenuItem(value: 'qr_scan', child: Text('QR')),
-                          DropdownMenuItem(value: 'manual_form', child: Text('Manual')),
-                        ],
-                        onChanged: (v) {
-                          setState(() => _methodFilter = v);
-                          _loadRecords();
-                        },
+                    ],
+                    const SizedBox(height: 12),
+                    SegmentedButton<_ReportTab>(
+                      segments: const [
+                        ButtonSegment(value: _ReportTab.resumen, label: Text('Resumen'), icon: Icon(Icons.insights)),
+                        ButtonSegment(value: _ReportTab.registros, label: Text('Registros'), icon: Icon(Icons.list)),
+                      ],
+                      selected: {_tab},
+                      onSelectionChanged: (value) => setState(() => _tab = value.first),
+                    ),
+                    if (_tab == _ReportTab.registros) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _searchCtrl,
+                        decoration: appFieldDecoration(
+                          hintText: _parkingMode ? 'Buscar placa o nombre...' : 'Buscar nombre o cédula...',
+                        ).copyWith(
+                          prefixIcon: const Icon(Icons.search),
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
                     ],
                   ],
                 ),
               ),
-              if (_stats != null)
-                SectionCard(
-                  padding: const EdgeInsets.all(18),
-                  child: Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    children: [
-                      _statChip('Total', '${_stats!.totalAttendance}'),
-                      _statChip('Benef.', '${_stats!.beneficiariosCount}'),
-                      _statChip('Invitados', '${_stats!.guestsCount}'),
-                      _statChip('QR', '${_stats!.qrScansCount}'),
-                      _statChip('Manual', '${_stats!.manualEntriesCount}'),
-                    ],
-                  ),
-                ),
               if (_loading)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
@@ -204,83 +411,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
                   padding: const EdgeInsets.all(16),
                   child: StatusBanner(message: _error!, isError: true),
                 )
-              else if (_parkingMode && _parkingRecords.isEmpty)
-                SectionCard(
-                  child: AppEmptyState(
-                    icon: Icons.local_parking_outlined,
-                    title: 'Sin vehículos registrados',
-                    description: 'No hay registros de estacionamiento para esta actividad.',
-                  ),
-                )
-              else if (!_parkingMode && _records.isEmpty)
-                SectionCard(
-                  child: AppEmptyState(
-                    icon: Icons.history_rounded,
-                    title: 'Sin registros',
-                    description: 'Ajusta los filtros o selecciona otra actividad.',
-                  ),
-                )
-              else if (_parkingMode)
-                ..._parkingRecords.map(
-                  (r) => SectionCard(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(r.plateRaw, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                        if (r.fullName != null && r.fullName!.isNotEmpty)
-                          Text(r.fullName!, style: const TextStyle(color: AppColors.text)),
-                        Text(
-                          [r.cedula, r.phone, r.createdAt].where((e) => e != null && e.isNotEmpty).join(' · '),
-                          style: const TextStyle(color: AppColors.text, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+              else if (_tab == _ReportTab.resumen)
+                _buildSummaryTab()
               else
-                ..._records.map(
-                  (record) => SectionCard(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: AppColors.accentSoft,
-                          child: Icon(
-                            record.attendanceType == 'beneficiario'
-                                ? Icons.badge_outlined
-                                : Icons.person_outline,
-                            color: AppColors.accent,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                record.fullName,
-                                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
-                              ),
-                              Text(
-                                [
-                                  record.typeLabel,
-                                  record.methodLabel,
-                                  if (record.activityTrackName != null) record.activityTrackName,
-                                  record.createdAt,
-                                ].whereType<String>().join(' · '),
-                                style: const TextStyle(color: AppColors.text, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildRecordsTab(),
             ],
           ),
         ),

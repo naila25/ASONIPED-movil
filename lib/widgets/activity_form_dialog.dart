@@ -188,7 +188,7 @@ Future<ActivityFormData?> showActivityFormDialog(
   );
 }
 
-Future<void> saveActivityForm(
+Future<int?> saveActivityForm(
   BuildContext context, {
   ActivityTrack? existing,
   required ActivityFormData data,
@@ -196,7 +196,7 @@ Future<void> saveActivityForm(
 }) async {
   try {
     if (existing == null) {
-      await AttendanceService.createActivityTrack(
+      final id = await AttendanceService.createActivityTrack(
         name: data.name,
         eventDate: data.eventDate,
         description: data.description.isEmpty ? null : data.description,
@@ -208,6 +208,8 @@ Future<void> saveActivityForm(
             data.repeatAttendanceEnabled ? data.repeatCooldownHours : null,
       );
       if (context.mounted) showAppSnackBar(context, 'Actividad creada');
+      onSaved();
+      return id;
     } else {
       await AttendanceService.updateActivityTrack(existing.id, {
         'name': data.name,
@@ -221,9 +223,11 @@ Future<void> saveActivityForm(
             data.repeatAttendanceEnabled ? data.repeatCooldownHours : null,
       });
       if (context.mounted) showAppSnackBar(context, 'Actividad actualizada');
+      onSaved();
+      return existing.id;
     }
-    onSaved();
   } catch (e) {
     if (context.mounted) handleApiError(context, e);
+    return null;
   }
 }

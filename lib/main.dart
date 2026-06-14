@@ -3,6 +3,7 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/asoniped_nav_bar.dart';
 
 void main() {
   runApp(const MyApp());
@@ -48,8 +49,22 @@ class _SplashGateState extends State<_SplashGate> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Column(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: AsonipedNavBar(
+              sectionTitle: 'Asistencia',
+              showUserMenu: false,
+            ),
+          ),
+          const Expanded(
+            child: Center(child: CircularProgressIndicator(color: AppColors.navBarBlue)),
+          ),
+        ],
+      ),
     );
   }
 }
