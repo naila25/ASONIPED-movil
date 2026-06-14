@@ -1,24 +1,53 @@
 import 'package:flutter/material.dart';
+import '../models/activity_track.dart';
 import '../models/attendance_record.dart';
+import '../models/parking_registration.dart';
 import '../services/attendance_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/ui_helpers.dart';
+import '../widgets/app_widgets.dart';
 
 class AttendanceHistoryScreen extends StatefulWidget {
   const AttendanceHistoryScreen({super.key});
 
   @override
-  State<AttendanceHistoryScreen> createState() =>
-      _AttendanceHistoryScreenState();
+  State<AttendanceHistoryScreen> createState() => _AttendanceHistoryScreenState();
 }
 
 class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
   bool _loading = true;
   String? _error;
+  List<ActivityTrack> _activities = [];
+  ActivityTrack? _selectedActivity;
   List<AttendanceRecord> _records = [];
+  List<ParkingRegistration> _parkingRecords = [];
+  AttendanceStats? _stats;
+  String? _typeFilter;
+  String? _methodFilter;
+
+  bool get _parkingMode => _selectedActivity?.isParking == true;
 
   @override
   void initState() {
     super.initState();
-    _loadRecords();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = await AttendanceService.fetchActivityTracks(limit: 100);
+      setState(() => _activities = result.items);
+      await _loadRecords();
+    } catch (e) {
+      setState(() => _error = e.toString());
+      if (mounted) handleApiError(context, e);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _loadRecords() async {
@@ -26,181 +55,247 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
       _loading = true;
       _error = null;
     });
-
     try {
-      final records = await AttendanceService.fetchAttendanceRecords();
-      setState(() {
-        _records = records;
-      });
+      if (_selectedActivity != null && _selectedActivity!.isParking) {
+        final parking = await AttendanceService.fetchParkingRegistrations(_selectedActivity!.id);
+        setState(() {
+          _parkingRecords = parking;
+          _records = [];
+          _stats = null;
+        });
+      } else {
+        final result = await AttendanceService.fetchAttendanceRecords(
+          limit: 200,
+          activityTrackId: _selectedActivity?.id,
+          attendanceType: _typeFilter,
+          attendanceMethod: _methodFilter,
+        );
+        AttendanceStats? stats;
+        if (_selectedActivity != null) {
+          stats = await AttendanceService.fetchAttendanceStats(_selectedActivity!.id);
+        }
+        setState(() {
+          _records = result.items;
+          _parkingRecords = [];
+          _stats = stats;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      setState(() => _error = e.toString());
+      if (mounted) handleApiError(context, e);
     } finally {
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _pickActivity() async {
+    final chosen = await showModalBottomSheet<ActivityTrack?>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              ListTile(
+                title: const Text('Todas las actividades'),
+                onTap: () => Navigator.pop(ctx, null),
+              ),
+              ..._activities.map(
+                (a) => ListTile(
+                  title: Text(a.name),
+                  subtitle: Text(a.isParking ? 'Estacionamiento' : (a.eventDate ?? '')),
+                  onTap: () => Navigator.pop(ctx, a),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    setState(() => _selectedActivity = chosen);
+    await _loadRecords();
   }
 
   @override
   Widget build(BuildContext context) {
-    const backgroundColor = Color(0xFFF5F7FB);
-    const cardColor = Colors.white;
-    const headingColor = Color(0xFF0F172A);
-    const textColor = Color(0xFF475569);
-    const borderColor = Color(0xFFE2E8F0);
-    const accentColor = Color(0xFF12A56B);
-    const accentSoft = Color(0xFFE7FBF2);
-
-    Widget sectionCard({required Widget child}) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        decoration: BoxDecoration(
-          color: cardColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: borderColor),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0F0F172A),
-              blurRadius: 18,
-              offset: Offset(0, 8),
-            ),
-          ],
-        ),
-        child: child,
-      );
-    }
-
     return Container(
-      color: backgroundColor,
+      color: AppColors.background,
       child: SafeArea(
         child: RefreshIndicator(
-          color: accentColor,
+          color: AppColors.accent,
           onRefresh: _loadRecords,
-          child: _loading
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 180),
-                    Center(child: CircularProgressIndicator()),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              SectionCard(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SectionHeader(
+                      icon: Icons.receipt_long_rounded,
+                      title: 'Reportes',
+                      subtitle: 'Filtra por actividad, tipo y método de registro.',
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton(
+                      onPressed: _pickActivity,
+                      child: Text(_selectedActivity?.name ?? 'Todas las actividades'),
+                    ),
+                    if (!_parkingMode) ...[
+                      const SizedBox(height: 12),
+                      DropdownButton<String?>(
+                        isExpanded: true,
+                        value: _typeFilter,
+                        hint: const Text('Tipo de asistencia'),
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('Todos los tipos')),
+                          DropdownMenuItem(value: 'beneficiario', child: Text('Beneficiarios')),
+                          DropdownMenuItem(value: 'guest', child: Text('Invitados')),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _typeFilter = v);
+                          _loadRecords();
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButton<String?>(
+                        isExpanded: true,
+                        value: _methodFilter,
+                        hint: const Text('Método de registro'),
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('Todos los métodos')),
+                          DropdownMenuItem(value: 'qr_scan', child: Text('QR')),
+                          DropdownMenuItem(value: 'manual_form', child: Text('Manual')),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _methodFilter = v);
+                          _loadRecords();
+                        },
+                      ),
+                    ],
                   ],
+                ),
+              ),
+              if (_stats != null)
+                SectionCard(
+                  padding: const EdgeInsets.all(18),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      _statChip('Total', '${_stats!.totalAttendance}'),
+                      _statChip('Benef.', '${_stats!.beneficiariosCount}'),
+                      _statChip('Invitados', '${_stats!.guestsCount}'),
+                      _statChip('QR', '${_stats!.qrScansCount}'),
+                      _statChip('Manual', '${_stats!.manualEntriesCount}'),
+                    ],
+                  ),
+                ),
+              if (_loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 48),
+                  child: Center(child: CircularProgressIndicator()),
                 )
-              : _error != null
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(16),
+              else if (_error != null)
+                SectionCard(
+                  padding: const EdgeInsets.all(16),
+                  child: StatusBanner(message: _error!, isError: true),
+                )
+              else if (_parkingMode && _parkingRecords.isEmpty)
+                SectionCard(
+                  child: AppEmptyState(
+                    icon: Icons.local_parking_outlined,
+                    title: 'Sin vehículos registrados',
+                    description: 'No hay registros de estacionamiento para esta actividad.',
+                  ),
+                )
+              else if (!_parkingMode && _records.isEmpty)
+                SectionCard(
+                  child: AppEmptyState(
+                    icon: Icons.history_rounded,
+                    title: 'Sin registros',
+                    description: 'Ajusta los filtros o selecciona otra actividad.',
+                  ),
+                )
+              else if (_parkingMode)
+                ..._parkingRecords.map(
+                  (r) => SectionCard(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        sectionCard(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Text(
-                              _error!,
-                              style: const TextStyle(color: Colors.red),
-                            ),
+                        Text(r.plateRaw, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                        if (r.fullName != null && r.fullName!.isNotEmpty)
+                          Text(r.fullName!, style: const TextStyle(color: AppColors.text)),
+                        Text(
+                          [r.cedula, r.phone, r.createdAt].where((e) => e != null && e.isNotEmpty).join(' · '),
+                          style: const TextStyle(color: AppColors.text, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                ..._records.map(
+                  (record) => SectionCard(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: AppColors.accentSoft,
+                          child: Icon(
+                            record.attendanceType == 'beneficiario'
+                                ? Icons.badge_outlined
+                                : Icons.person_outline,
+                            color: AppColors.accent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                record.fullName,
+                                style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.heading),
+                              ),
+                              Text(
+                                [
+                                  record.typeLabel,
+                                  record.methodLabel,
+                                  if (record.activityTrackName != null) record.activityTrackName,
+                                  record.createdAt,
+                                ].whereType<String>().join(' · '),
+                                style: const TextStyle(color: AppColors.text, fontSize: 12),
+                              ),
+                            ],
                           ),
                         ),
                       ],
-                    )
-                  : _records.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            sectionCard(
-                              child: const Padding(
-                                padding: EdgeInsets.all(24),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.history_rounded,
-                                      size: 56,
-                                      color: Color(0xFFCBD5E1),
-                                    ),
-                                    SizedBox(height: 14),
-                                    Text(
-                                      'No attendance records found.',
-                                      style: TextStyle(
-                                        color: headingColor,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                    SizedBox(height: 6),
-                                    Text(
-                                      'Pull to refresh and try again.',
-                                      style: TextStyle(
-                                        color: textColor,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                      : ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            sectionCard(
-                              child: const Padding(
-                                padding: EdgeInsets.all(18),
-                                child: Row(
-                                  children: [
-                                    Icon(
-                                      Icons.receipt_long_rounded,
-                                      color: accentColor,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      'Historial',
-                                      style: TextStyle(
-                                        color: headingColor,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            ..._records.map(
-                              (record) => Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                decoration: BoxDecoration(
-                                  color: cardColor,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(color: borderColor),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x0F0F172A),
-                                      blurRadius: 18,
-                                      offset: Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                                  title: Text(
-                                    record.fullName,
-                                    style: const TextStyle(
-                                      color: headingColor,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    'Type: ${record.attendanceType} • Method: ${record.attendanceMethod}${record.createdAt != null ? ' • ${record.createdAt}' : ''}',
-                                    style: const TextStyle(color: textColor),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _statChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text('$label: $value', style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.accent)),
     );
   }
 }

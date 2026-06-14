@@ -8,6 +8,12 @@ class ActivityTrack {
   final String? status;
   final bool? scanningActive;
   final bool? parkingEnabled;
+  final bool? repeatAttendanceEnabled;
+  final int? repeatAttendanceCooldownHours;
+  final bool? archived;
+  final int? totalAttendance;
+  final int? beneficiariosCount;
+  final int? guestsCount;
   final int? createdBy;
   final String? createdAt;
 
@@ -21,14 +27,63 @@ class ActivityTrack {
     this.status,
     this.scanningActive,
     this.parkingEnabled,
+    this.repeatAttendanceEnabled,
+    this.repeatAttendanceCooldownHours,
+    this.archived,
+    this.totalAttendance,
+    this.beneficiariosCount,
+    this.guestsCount,
     this.createdBy,
     this.createdAt,
   });
 
+  bool get isArchived => archived == true;
+  bool get isParking => parkingEnabled == true;
+  bool get isScanning => scanningActive == true;
+
+  ActivityTrack copyWith({
+    int? id,
+    String? name,
+    String? description,
+    String? eventDate,
+    String? eventTime,
+    String? location,
+    String? status,
+    bool? scanningActive,
+    bool? parkingEnabled,
+    bool? repeatAttendanceEnabled,
+    int? repeatAttendanceCooldownHours,
+    bool? archived,
+    int? totalAttendance,
+    int? beneficiariosCount,
+    int? guestsCount,
+  }) {
+    return ActivityTrack(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      eventDate: eventDate ?? this.eventDate,
+      eventTime: eventTime ?? this.eventTime,
+      location: location ?? this.location,
+      status: status ?? this.status,
+      scanningActive: scanningActive ?? this.scanningActive,
+      parkingEnabled: parkingEnabled ?? this.parkingEnabled,
+      repeatAttendanceEnabled: repeatAttendanceEnabled ?? this.repeatAttendanceEnabled,
+      repeatAttendanceCooldownHours:
+          repeatAttendanceCooldownHours ?? this.repeatAttendanceCooldownHours,
+      archived: archived ?? this.archived,
+      totalAttendance: totalAttendance ?? this.totalAttendance,
+      beneficiariosCount: beneficiariosCount ?? this.beneficiariosCount,
+      guestsCount: guestsCount ?? this.guestsCount,
+      createdBy: createdBy,
+      createdAt: createdAt,
+    );
+  }
+
   factory ActivityTrack.fromJson(Map<String, dynamic> json) {
     return ActivityTrack(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id']?.toString() ?? '') ?? 0,
-      name: json['name']?.toString() ?? 'Unnamed activity',
+      name: json['name']?.toString() ?? 'Actividad sin nombre',
       description: json['description']?.toString(),
       eventDate: json['event_date']?.toString(),
       eventTime: json['event_time']?.toString(),
@@ -36,6 +91,21 @@ class ActivityTrack {
       status: json['status']?.toString(),
       scanningActive: json['scanning_active'] == true || json['scanning_active']?.toString() == 'true',
       parkingEnabled: json['parking_enabled'] == true || json['parking_enabled']?.toString() == 'true',
+      repeatAttendanceEnabled: json['repeat_attendance_enabled'] == true ||
+          json['repeat_attendance_enabled']?.toString() == 'true',
+      repeatAttendanceCooldownHours: json['repeat_attendance_cooldown_hours'] is int
+          ? json['repeat_attendance_cooldown_hours']
+          : int.tryParse(json['repeat_attendance_cooldown_hours']?.toString() ?? ''),
+      archived: json['archived'] == true || json['archived']?.toString() == '1',
+      totalAttendance: json['total_attendance'] is int
+          ? json['total_attendance']
+          : int.tryParse(json['total_attendance']?.toString() ?? ''),
+      beneficiariosCount: json['beneficiarios_count'] is int
+          ? json['beneficiarios_count']
+          : int.tryParse(json['beneficiarios_count']?.toString() ?? ''),
+      guestsCount: json['guests_count'] is int
+          ? json['guests_count']
+          : int.tryParse(json['guests_count']?.toString() ?? ''),
       createdBy: json['created_by'] is int ? json['created_by'] : int.tryParse(json['created_by']?.toString() ?? ''),
       createdAt: json['created_at']?.toString(),
     );
